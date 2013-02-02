@@ -1,7 +1,7 @@
 package eu.cloudtm.exception;
 
 /**
- * // TODO: Document this
+ * Represents all the connection issues with the remote machine
  *
  * @author Pedro Ruivo
  * @since 1.0

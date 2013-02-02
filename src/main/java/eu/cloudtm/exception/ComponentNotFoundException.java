@@ -1,7 +1,7 @@
 package eu.cloudtm.exception;
 
 /**
- * // TODO: Document this
+ * Exception thrown when the JMX component requested is not found
  *
  * @author Pedro Ruivo
  * @since 1.0

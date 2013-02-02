@@ -1,7 +1,7 @@
 package eu.cloudtm.exception;
 
 /**
- * // TODO: Document this
+ * Thrown when no JMX protocols are registered
  *
  * @author Pedro Ruivo
  * @since 1.0
