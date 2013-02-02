@@ -7,6 +7,7 @@ import eu.cloudtm.exception.NoJmxProtocolRegisterException;
 import eu.cloudtm.jmxprotocol.JmxProtocol;
 import eu.cloudtm.jmxprotocol.JmxRMIProtocol;
 import eu.cloudtm.jmxprotocol.RemotingJmxProtocol;
+import org.apache.log4j.Logger;
 
 import javax.management.*;
 import javax.management.remote.JMXConnector;
@@ -41,10 +42,14 @@ public class InfinispanActuator {
      */
     public static final String[] EMPTY_SIGNATURE = new String[0];
     private static final InfinispanActuator INFINISPAN_ACTUATOR = new InfinispanActuator();
+    private static final Logger log = Logger.getLogger(InfinispanActuator.class);
     private final List<JmxProtocol> jmxProtocols;
     private final Set<InfinispanMachine> infinispanMachines;
 
     public InfinispanActuator() {
+        if (log.isInfoEnabled()) {
+            log.info("Initialize Infinispan Actuator");
+        }
         this.jmxProtocols = new LinkedList<JmxProtocol>();
         this.infinispanMachines = new HashSet<InfinispanMachine>();
         registerJmxProtocol(new JmxRMIProtocol());
@@ -65,10 +70,19 @@ public class InfinispanActuator {
      */
     public final void registerJmxProtocol(JmxProtocol protocol) {
         if (protocol == null) {
+            log.warn("Tried to register a null JmxProtocol... ignored");
             return;
         }
         synchronized (jmxProtocols) {
-            jmxProtocols.add(protocol);
+            if (jmxProtocols.add(protocol)) {
+                if (log.isInfoEnabled()) {
+                    log.info("Registered a new JmxProtocol: " + protocol);
+                }
+            } else {
+                if (log.isInfoEnabled()) {
+                    log.info("Tried to register a already existing JmxProtocol [" + protocol + "]... ignored");
+                }
+            }
         }
     }
 
@@ -79,7 +93,15 @@ public class InfinispanActuator {
      */
     public final void addMachine(InfinispanMachine machine) {
         synchronized (infinispanMachines) {
-            infinispanMachines.add(machine);
+            if (infinispanMachines.add(machine)) {
+                if (log.isInfoEnabled()) {
+                    log.info("Added a new InfinispanMachine: " + machine);
+                }
+            } else {
+                if (log.isInfoEnabled()) {
+                    log.info("Tried to add a already existing InfinispanMachine [" + machine + "]... ignored");
+                }
+            }
         }
     }
 
@@ -90,17 +112,20 @@ public class InfinispanActuator {
      * @param port     the port (String representation)
      */
     public final void removeMachine(String hostname, String port) {
-        if (port == null) {
-            return;
-        }
         synchronized (infinispanMachines) {
             for (Iterator<InfinispanMachine> iterator = infinispanMachines.iterator(); iterator.hasNext(); ) {
                 InfinispanMachine machine = iterator.next();
                 if (machine.getHostname().equals(hostname) && machine.getPort().equals(port)) {
+                    if (log.isInfoEnabled()) {
+                        log.info("Removed machine " + machine);
+                    }
                     iterator.remove();
                     break;
                 }
             }
+        }
+        if (log.isInfoEnabled()) {
+            log.info("Tried to remove the machine [" + hostname + ":" + port + "] but it was not found");
         }
     }
 
@@ -114,6 +139,9 @@ public class InfinispanActuator {
             for (Iterator<InfinispanMachine> iterator = infinispanMachines.iterator(); iterator.hasNext(); ) {
                 InfinispanMachine machine = iterator.next();
                 if (machine.getHostname().equals(hostname)) {
+                    if (log.isInfoEnabled()) {
+                        log.info("Removing machines with hostname " + hostname + ". Removed " + machine);
+                    }
                     iterator.remove();
                 }
             }
@@ -194,17 +222,29 @@ public class InfinispanActuator {
                                         String componentName, String methodName, Object[] parameter,
                                         String[] signature) throws NoJmxProtocolRegisterException, ConnectionException,
             ComponentNotFoundException, InvocationException {
+        if (log.isInfoEnabled()) {
+            log.info("Invoke in machine [" + machine + "] method " + componentName + "." + methodName +
+                    Arrays.toString(signature));
+        }
         try {
             MBeanServerConnection connection = createConnection(machine);
             ObjectName objectName = findCacheComponent(connection, infinispanDomain, cacheName, componentName);
             return connection.invoke(objectName, methodName, parameter, signature);
         } catch (ReflectionException e) {
+            log.warn("[" + machine + "] error in method " + componentName + "." + methodName +
+                    Arrays.toString(signature), e);
             throw new InvocationException(e);
         } catch (MBeanException e) {
+            log.warn("[" + machine + "] error in method " + componentName + "." + methodName +
+                    Arrays.toString(signature), e);
             throw new InvocationException(e);
         } catch (InstanceNotFoundException e) {
+            log.warn("[" + machine + "] error in method " + componentName + "." + methodName +
+                    Arrays.toString(signature), e);
             throw new ComponentNotFoundException(e);
         } catch (IOException e) {
+            log.warn("[" + machine + "] error in method " + componentName + "." + methodName +
+                    Arrays.toString(signature), e);
             throw new ConnectionException(e);
         }
     }
@@ -226,6 +266,9 @@ public class InfinispanActuator {
     public final Object invokeOnceInAnyMachine(String infinispanDomain, String cacheName, String componentName,
                                                String methodName, Object[] parameter, String[] signature)
             throws NoJmxProtocolRegisterException, InvocationException {
+        if (log.isInfoEnabled()) {
+            log.info("Invoke in *ANY* machine method " + componentName + "." + methodName + Arrays.toString(signature));
+        }
         MBeanServerConnection connection;
         ObjectName objectName;
         synchronized (infinispanMachines) {
@@ -233,9 +276,17 @@ public class InfinispanActuator {
                 try {
                     connection = createConnection(machine);
                     objectName = findCacheComponent(connection, infinispanDomain, cacheName, componentName);
-                    return connection.invoke(objectName, methodName, parameter, signature);
+                    Object retVal = connection.invoke(objectName, methodName, parameter, signature);
+                    if (log.isDebugEnabled()) {
+                        log.debug("invoke in any, [" + machine + "] returned in method " + componentName + "." +
+                                methodName + Arrays.toString(signature) + " = " + retVal);
+                    }
+
                 } catch (Exception e) {
-                    //no-op
+                    if (log.isDebugEnabled()) {
+                        log.debug("invoke in any, [" + machine + "] error in method " + componentName + "." +
+                                methodName + Arrays.toString(signature), e);
+                    }
                 }
             }
         }
@@ -259,6 +310,9 @@ public class InfinispanActuator {
                                                                     String componentName, String methodName,
                                                                     Object[] parameter, String[] signature)
             throws NoJmxProtocolRegisterException {
+        if (log.isInfoEnabled()) {
+            log.info("Invoke in *ALL* machine method " + componentName + "." + methodName + Arrays.toString(signature));
+        }
         Map<InfinispanMachine, Object> results = new HashMap<InfinispanMachine, Object>();
         MBeanServerConnection connection;
         ObjectName objectName;
@@ -271,9 +325,17 @@ public class InfinispanActuator {
                     Object result = connection.invoke(objectName, methodName, parameter, signature);
                     results.put(machine, result);
                 } catch (Exception e) {
+                    if (log.isDebugEnabled()) {
+                        log.debug("invoke in all, [" + machine + "] error in method " + componentName + "." +
+                                methodName + Arrays.toString(signature), e);
+                    }
                     results.put(machine, ERROR_INVOKING);
                 }
             }
+        }
+        if (log.isDebugEnabled()) {
+            log.debug("invoke in all, returned in method " + componentName + "." +
+                    methodName + Arrays.toString(signature) + " = " + results);
         }
         return results;
     }
@@ -289,31 +351,37 @@ public class InfinispanActuator {
     private MBeanServerConnection createConnection(InfinispanMachine machine) throws NoJmxProtocolRegisterException,
             ConnectionException {
         MBeanServerConnection mBeanServerConnection = null;
+        Map<String, Object> environment = new HashMap<String, Object>();
+        if (machine.getUsername() != null && !machine.getUsername().isEmpty()) {
+            environment.put(JMXConnector.CREDENTIALS, new String[]{machine.getUsername(), machine.getPassword()});
+        }
         synchronized (jmxProtocols) {
             if (jmxProtocols.isEmpty()) {
                 throw new NoJmxProtocolRegisterException();
             }
 
-            Map<String, Object> environment = new HashMap<String, Object>();
-            if (machine.getUsername() != null && !machine.getUsername().isEmpty()) {
-                environment.put(JMXConnector.CREDENTIALS, new String[]{machine.getUsername(), machine.getPassword()});
-            }
-
             JMXConnector jmxConnector;
 
             for (JmxProtocol jmxProtocol : jmxProtocols) {
+                if (log.isDebugEnabled()) {
+                    log.debug("trying to connect to " + machine + " using " + jmxProtocol);
+                }
                 try {
                     jmxConnector = JMXConnectorFactory.connect(jmxProtocol.createUrl(machine.getHostname(),
                             machine.getPort()), environment);
                 } catch (IOException e) {
-                    //no luck
+                    if (log.isDebugEnabled()) {
+                        log.debug("error trying to connect to " + machine + " using " + jmxProtocol, e);
+                    }
                     continue;
                 }
                 try {
                     mBeanServerConnection = jmxConnector.getMBeanServerConnection();
                     break;
                 } catch (IOException e) {
-                    //no luck
+                    if (log.isDebugEnabled()) {
+                        log.debug("error trying to connect to " + machine + " using " + jmxProtocol, e);
+                    }
                 }
             }
         }
@@ -336,18 +404,34 @@ public class InfinispanActuator {
      */
     private ObjectName findCacheComponent(MBeanServerConnection connection, String infinispanDomain, String cacheName,
                                           String component) throws ComponentNotFoundException, ConnectionException {
+        if (log.isDebugEnabled()) {
+            log.debug("Trying to find the component defined by: " + infinispanDomain + ":" + cacheName + "." +
+                    component);
+        }
         try {
             for (ObjectName name : connection.queryNames(null, null)) {
+                if (log.isTraceEnabled()) {
+                    log.trace("["+ infinispanDomain + ":" + cacheName + "." + component + "] Checking ObjectName " +
+                            name);
+                }
                 if (name.getDomain().equals(infinispanDomain)) {
-
                     if ("Cache".equals(name.getKeyProperty("type")) && cacheName.equals(name.getKeyProperty("name")) &&
                             component.equals(name.getKeyProperty("component"))) {
+                        if (log.isDebugEnabled()) {
+                            log.debug("["+ infinispanDomain + ":" + cacheName + "." + component +
+                                    "] ObjectName found: " + name);
+                        }
                         return name;
                     }
                 }
             }
         } catch (IOException e) {
+            log.warn("["+ infinispanDomain + ":" + cacheName + "." + component + "] an error occurs", e);
             throw new ConnectionException(e);
+        }
+        if (log.isDebugEnabled()) {
+            log.debug("["+ infinispanDomain + ":" + cacheName + "." + component +
+                    "] No ObjectName found");
         }
         throw new ComponentNotFoundException(infinispanDomain, cacheName, component);
     }
