@@ -34,6 +34,10 @@ public class ComponentNotFoundException extends Exception {
         super("Component [" + component + "] not found in cache [" + cacheName + "] and domain [" + domain + "]");
     }
 
+    public ComponentNotFoundException(String domain, String applicationName) {
+        super("Component [Worker] not found in fenix framework [" + applicationName + "] and domain [" + domain + "]");
+    }
+
     public ComponentNotFoundException(Throwable throwable) {
         super(throwable);
     }

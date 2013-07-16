@@ -198,9 +198,12 @@ public class InfinispanActuator {
      * @throws InvocationException            if the method was not invoked successfully in any
      *                                        {@link InfinispanMachine} registered.
      */
-    public final void triggerSwitchReplicationProtocol(String infinispanDomain, String cacheName, String protocolId,
-                                                       boolean forceStop, boolean abortOnStop)
+    public final void triggerSwitchReplicationProtocol(String infinispanDomain, String cacheName,
+                                                       String fenixFrameworkDomain, String applicationName,
+                                                       String protocolId, boolean forceStop, boolean abortOnStop)
             throws NoJmxProtocolRegisterException, InvocationException {
+        invokeOnWorkerOnceInAnyMachine(fenixFrameworkDomain, applicationName, "setProtocol",
+                new Object[] {protocolId}, new String[] {"String"});
         invokeOnceInAnyMachine(infinispanDomain, cacheName, "ReconfigurableReplicationManager",
                 "switchTo", new Object[]{protocolId, forceStop, abortOnStop},
                 new String[]{"String", "boolean", "boolean"});
@@ -313,6 +316,36 @@ public class InfinispanActuator {
             }
         }
         throw new InvocationException("An error occurs while trying to invoke " + componentName + "." + methodName);
+    }
+
+    public final Object invokeOnWorkerOnceInAnyMachine(String fenixFrameworkDomain, String applicationName,
+                                                       String methodName, Object[] parameter, String[] signature)
+            throws NoJmxProtocolRegisterException, InvocationException {
+        if (log.isInfoEnabled()) {
+            log.info("Invoke in *ANY* machine method Worker." + methodName + Arrays.toString(signature));
+        }
+        MBeanServerConnection connection;
+        ObjectName objectName;
+        synchronized (infinispanMachines) {
+            for (InfinispanMachine machine : infinispanMachines) {
+                try {
+                    connection = createConnection(machine);
+                    objectName = findFenixFrameworkWorker(connection, fenixFrameworkDomain, applicationName);
+                    Object retVal = connection.invoke(objectName, methodName, parameter, signature);
+                    if (log.isDebugEnabled()) {
+                        log.debug("invoke in any, [" + machine + "] returned in method Worker." +
+                                methodName + Arrays.toString(signature) + " = " + retVal);
+                    }
+
+                } catch (Exception e) {
+                    if (log.isDebugEnabled()) {
+                        log.debug("invoke in any, [" + machine + "] error in method Worker." +
+                                methodName + Arrays.toString(signature), e);
+                    }
+                }
+            }
+        }
+        throw new InvocationException("An error occurs while trying to invoke Worker." + methodName);
     }
 
     /**
@@ -433,14 +466,14 @@ public class InfinispanActuator {
         try {
             for (ObjectName name : connection.queryNames(null, null)) {
                 if (log.isTraceEnabled()) {
-                    log.trace("["+ infinispanDomain + ":" + cacheName + "." + component + "] Checking ObjectName " +
+                    log.trace("[" + infinispanDomain + ":" + cacheName + "." + component + "] Checking ObjectName " +
                             name);
                 }
                 if (name.getDomain().equals(infinispanDomain)) {
                     if ("Cache".equals(name.getKeyProperty("type")) && cacheName.equals(name.getKeyProperty("name")) &&
                             component.equals(name.getKeyProperty("component"))) {
                         if (log.isDebugEnabled()) {
-                            log.debug("["+ infinispanDomain + ":" + cacheName + "." + component +
+                            log.debug("[" + infinispanDomain + ":" + cacheName + "." + component +
                                     "] ObjectName found: " + name);
                         }
                         return name;
@@ -448,13 +481,48 @@ public class InfinispanActuator {
                 }
             }
         } catch (IOException e) {
-            log.warn("["+ infinispanDomain + ":" + cacheName + "." + component + "] an error occurs", e);
+            log.warn("[" + infinispanDomain + ":" + cacheName + "." + component + "] an error occurs", e);
             throw new ConnectionException(e);
         }
         if (log.isDebugEnabled()) {
-            log.debug("["+ infinispanDomain + ":" + cacheName + "." + component +
+            log.debug("[" + infinispanDomain + ":" + cacheName + "." + component +
                     "] No ObjectName found");
         }
         throw new ComponentNotFoundException(infinispanDomain, cacheName, component);
+    }
+
+    private ObjectName findFenixFrameworkWorker(MBeanServerConnection connection, String fenixFrameworkDomain,
+                                                String applicationName)
+            throws ComponentNotFoundException, ConnectionException {
+        if (log.isDebugEnabled()) {
+            log.debug("Trying to find the component defined by: " + fenixFrameworkDomain + ":" + applicationName);
+        }
+        try {
+            for (ObjectName name : connection.queryNames(null, null)) {
+                if (log.isTraceEnabled()) {
+                    log.trace("[" + fenixFrameworkDomain + ":" + applicationName + "] Checking ObjectName " +
+                            name);
+                }
+                if (name.getDomain().equals(fenixFrameworkDomain)) {
+                    if (ObjectName.quote(applicationName).equals(name.getKeyProperty("application")) &&
+                            "messaging".equals(name.getKeyProperty("category")) &&
+                            "Worker".equals(name.getKeyProperty("component")) &&
+                            applicationName.equals(name.getKeyProperty("remoteApplication"))) {
+                        if (log.isDebugEnabled()) {
+                            log.debug("[" + fenixFrameworkDomain + ":" + applicationName + "] ObjectName found: " +
+                                    name);
+                        }
+                        return name;
+                    }
+                }
+            }
+        } catch (IOException e) {
+            log.warn("[" + fenixFrameworkDomain + ":" + applicationName + "] an error occurs", e);
+            throw new ConnectionException(e);
+        }
+        if (log.isDebugEnabled()) {
+            log.debug("[" + fenixFrameworkDomain + ":" + applicationName + "] No ObjectName found");
+        }
+        throw new ComponentNotFoundException(fenixFrameworkDomain, applicationName);
     }
 }
