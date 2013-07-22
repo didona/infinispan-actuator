@@ -31,7 +31,7 @@ package eu.cloudtm;
 public class InfinispanMachine {
 
     private final String hostname;
-    private final String port;
+    private final Integer port;
     private final String username;
     private final String password;
 
@@ -43,7 +43,7 @@ public class InfinispanMachine {
      * @param username the JMX username (optional)
      * @param password the JMX password (optional)
      */
-    public InfinispanMachine(String hostname, String port, String username, String password) {
+    public InfinispanMachine(String hostname, Integer port, String username, String password) {
         if (hostname == null) {
             throw new NullPointerException("Hostname cannot be null");
         } else if (port == null) {
@@ -56,25 +56,12 @@ public class InfinispanMachine {
         this.password = password;
     }
 
-    /**
-     * see {@link #InfinispanMachine(String, String, String, String)}
-     */
-    public InfinispanMachine(String hostname, int port, String username, String password) {
-        this(hostname, String.valueOf(port), username, password);
-    }
 
     /**
-     * see {@link #InfinispanMachine(String, String, String, String)}
-     */
-    public InfinispanMachine(String hostname, String port) {
-        this(hostname, port, null, null);
-    }
-
-    /**
-     * see {@link #InfinispanMachine(String, String, String, String)}
+     * see {@link #InfinispanMachine(String, Integer, String, String)}
      */
     public InfinispanMachine(String hostname, int port) {
-        this(hostname, String.valueOf(port), null, null);
+        this(hostname, port, null, null);
     }
 
     /**
@@ -87,7 +74,7 @@ public class InfinispanMachine {
     /**
      * @return the JMX port represented by this instance
      */
-    public final String getPort() {
+    public final int getPort() {
         return port;
     }
 
