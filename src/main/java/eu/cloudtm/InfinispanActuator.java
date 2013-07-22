@@ -27,8 +27,6 @@ import eu.cloudtm.exception.ConnectionException;
 import eu.cloudtm.exception.InvocationException;
 import eu.cloudtm.exception.NoJmxProtocolRegisterException;
 import eu.cloudtm.jmxprotocol.JmxProtocol;
-import eu.cloudtm.jmxprotocol.JmxRMIProtocol;
-import eu.cloudtm.jmxprotocol.RemotingJmxProtocol;
 import org.apache.log4j.Logger;
 
 import javax.management.*;
@@ -63,49 +61,42 @@ public class InfinispanActuator {
      * avoid creating every time a new array
      */
     public static final String[] EMPTY_SIGNATURE = new String[0];
-    private static final InfinispanActuator INFINISPAN_ACTUATOR = new InfinispanActuator();
+
     private static final Logger log = Logger.getLogger(InfinispanActuator.class);
-    private final List<JmxProtocol> jmxProtocols;
+    private final Set<JmxProtocol> jmxProtocols;
     private final Set<InfinispanMachine> infinispanMachines;
 
     public InfinispanActuator() {
-        if (log.isInfoEnabled()) {
-            log.info("Initialize Infinispan Actuator");
-        }
-        this.jmxProtocols = new LinkedList<JmxProtocol>();
-        this.infinispanMachines = new HashSet<InfinispanMachine>();
-        registerJmxProtocol(new JmxRMIProtocol());
-        registerJmxProtocol(new RemotingJmxProtocol());
+        this(new HashSet<JmxProtocol>(), new HashSet<InfinispanMachine>());
     }
 
-    /**
-     * @return this instance
-     */
-    public static InfinispanActuator getInstance() {
-        return INFINISPAN_ACTUATOR;
+    public InfinispanActuator(Set<JmxProtocol> jmxProtocols,
+                              Set<InfinispanMachine> infinispanMachines) {
+        this.jmxProtocols = new HashSet<JmxProtocol>(jmxProtocols);
+        this.infinispanMachines = new HashSet<InfinispanMachine>(infinispanMachines);
     }
 
     /**
      * it register a new {@link JmxProtocol}. By default, the RMI and the remoting-jmx protocols are already registered
      *
      * @param protocol the JMX protocol
+     * @return true if successed, false otherwise
+     *
      */
-    public final void registerJmxProtocol(JmxProtocol protocol) {
-        if (protocol == null) {
-            log.warn("Tried to register a null JmxProtocol... ignored");
-            return;
-        }
+    public final boolean registerJmxProtocol(JmxProtocol protocol) {
+        if(protocol == null)
+            return false;
+
+        boolean ret;
         synchronized (jmxProtocols) {
-            if (jmxProtocols.add(protocol)) {
-                if (log.isInfoEnabled()) {
-                    log.info("Registered a new JmxProtocol: " + protocol);
-                }
+            ret = jmxProtocols.add(protocol);
+            if (ret) {
+                log.info("Registered a new JmxProtocol: " + protocol);
             } else {
-                if (log.isInfoEnabled()) {
-                    log.info("Tried to register a already existing JmxProtocol [" + protocol + "]... ignored");
-                }
+                log.info("Tried to register a already existing JmxProtocol [" + protocol + "]... ignored");
             }
         }
+        return ret;
     }
 
     /**
@@ -113,18 +104,20 @@ public class InfinispanActuator {
      *
      * @param machine the new machine
      */
-    public final void addMachine(InfinispanMachine machine) {
+    public final boolean addMachine(InfinispanMachine machine) {
+        if(machine == null)
+            return false;
+
+        boolean ret;
         synchronized (infinispanMachines) {
-            if (infinispanMachines.add(machine)) {
-                if (log.isInfoEnabled()) {
-                    log.info("Added a new InfinispanMachine: " + machine);
-                }
+            ret = infinispanMachines.add(machine);
+            if (ret) {
+                log.info("Added a new InfinispanMachine: " + machine);
             } else {
-                if (log.isInfoEnabled()) {
-                    log.info("Tried to add a already existing InfinispanMachine [" + machine + "]... ignored");
-                }
+                log.info("Tried to add a already existing InfinispanMachine [" + machine + "]... ignored");
             }
         }
+        return ret;
     }
 
     /**
@@ -133,22 +126,19 @@ public class InfinispanActuator {
      * @param hostname the hostname
      * @param port     the port (String representation)
      */
-    public final void removeMachine(String hostname, String port) {
+    public final boolean removeMachine(String hostname, int port) {
+        boolean ret;
         synchronized (infinispanMachines) {
-            for (Iterator<InfinispanMachine> iterator = infinispanMachines.iterator(); iterator.hasNext(); ) {
-                InfinispanMachine machine = iterator.next();
-                if (machine.getHostname().equals(hostname) && machine.getPort().equals(port)) {
-                    if (log.isInfoEnabled()) {
-                        log.info("Removed machine " + machine);
-                    }
-                    iterator.remove();
-                    break;
-                }
+            InfinispanMachine toRemove = new InfinispanMachine(hostname, port);
+
+            ret = infinispanMachines.remove(toRemove);
+            if(ret){
+                log.info("Removed machine " + toRemove);
+            } else {
+                log.info("Tried to remove the machine [" + hostname + ":" + port + "] but it was not found");
             }
         }
-        if (log.isInfoEnabled()) {
-            log.info("Tried to remove the machine [" + hostname + ":" + port + "] but it was not found");
-        }
+        return ret;
     }
 
     /**
@@ -158,13 +148,10 @@ public class InfinispanActuator {
      */
     public final void removeMachines(String hostname) {
         synchronized (infinispanMachines) {
-            for (Iterator<InfinispanMachine> iterator = infinispanMachines.iterator(); iterator.hasNext(); ) {
-                InfinispanMachine machine = iterator.next();
+            for (InfinispanMachine machine : infinispanMachines) {
                 if (machine.getHostname().equals(hostname)) {
-                    if (log.isInfoEnabled()) {
-                        log.info("Removing machines with hostname " + hostname + ". Removed " + machine);
-                    }
-                    iterator.remove();
+                    infinispanMachines.remove(machine);
+                    log.info("Removing machines with hostname " + hostname + ". Removed " + machine);
                 }
             }
         }
@@ -179,8 +166,7 @@ public class InfinispanActuator {
      * @throws InvocationException            if the method was not invoked successfully in any
      *                                        {@link InfinispanMachine} registered.
      */
-    public final void triggerDataPlacement(String infinispanDomain, String cacheName)
-            throws NoJmxProtocolRegisterException, InvocationException {
+    public final void triggerDataPlacement(String infinispanDomain, String cacheName) throws InvocationException, NoJmxProtocolRegisterException {
         invokeOnceInAnyMachine(infinispanDomain, cacheName, "DataPlacementManager", "dataPlacementRequest",
                 EMPTY_PARAMETER, EMPTY_SIGNATURE);
     }
@@ -206,6 +192,35 @@ public class InfinispanActuator {
                 new String[]{"String", "boolean", "boolean"});
     }
 
+
+    public final void triggerBlockingSwitchReplicationProtocol(String infinispanDomain, String cacheName, String protocolId,
+                                                               boolean forceStop, boolean abortOnStop) throws NoJmxProtocolRegisterException, InvocationException {
+
+        triggerSwitchReplicationProtocol(infinispanDomain, cacheName, protocolId, forceStop, abortOnStop);
+
+        synchronized (infinispanMachines) {
+            Set<InfinispanMachine> machines = new HashSet<InfinispanMachine>(infinispanMachines);
+            while (!machines.isEmpty()){
+                for (InfinispanMachine machine : machines){
+                    Object result = invokeInMachine(machine, infinispanDomain, cacheName, "ReconfigurableReplicationManager",
+                            "getCurrentProtocolState", EMPTY_PARAMETER, EMPTY_SIGNATURE);
+
+                    if( result instanceof String ){
+                        String resultString = (String) result;
+                        if( resultString.equals("SAFE") ){
+                            machines.remove( machine );
+                        }
+                    } else if( result == ERROR_INVOKING ){
+                        machines.remove( machine );
+                    }
+                }
+                log.trace("Still " + machines.size() + " machines changing " );
+            }
+        }
+    }
+
+
+
     /**
      * triggers the replication degree mechanism to change it to a new replication degree
      *
@@ -222,6 +237,77 @@ public class InfinispanActuator {
                 "setReplicationDegree", new Object[]{replicationDegree},
                 new String[]{"int"});
     }
+
+
+    /**
+     * triggers the replication degree mechanism to change it to a new replication degree
+     *
+     * @param infinispanDomain  the Infinispan JMX domain, it is like registered in Infinispan configuration file
+     * @param cacheName         the cache name
+     * @param replicationDegree the new replication degree
+     * @throws NoJmxProtocolRegisterException if no JMX Protocol is registered
+     * @throws InvocationException            if the method was not invoked successfully in any
+     *                                        {@link InfinispanMachine} registered.
+     */
+    public final void triggerBlockingNewReplicationDegree(String infinispanDomain, String cacheName, int replicationDegree)
+            throws NoJmxProtocolRegisterException, InvocationException {
+
+        triggerNewReplicationDegree(infinispanDomain, cacheName, replicationDegree);
+
+        synchronized (infinispanMachines) {
+
+
+            // PHASE 1: checking that all machines are aligned on the same round
+            long round = -1;
+            boolean roundChanged = true,
+                    aligned = false;
+
+            while( roundChanged || !aligned ){
+                Map<InfinispanMachine, Object> results = invokeInAllMachines(infinispanDomain, cacheName, "DataPlacementManager",
+                        "getCurrentRoundId", EMPTY_PARAMETER, EMPTY_SIGNATURE);
+                roundChanged = false;
+                aligned = true;
+
+                for (Map.Entry<InfinispanMachine, Object> entry : results.entrySet()){
+                    Object result = entry.getValue();
+
+                    if( result instanceof Long ){
+                        Long resultLong = (Long) entry.getValue();
+                        if( resultLong > round ){
+                            roundChanged = true;
+                            round = resultLong;
+                            log.trace( "A new round has been found !" );
+                        } else if( resultLong < round ){
+                            aligned = false;
+                            log.trace( "Machines are not aligned!" );
+                        }
+                    }
+                }
+            }
+            log.trace( "Machines are aligned!" );
+
+            // PHASE 2: checking that all the machines already ended the current round
+            Set<InfinispanMachine> machines = new HashSet<InfinispanMachine>(infinispanMachines);
+            while (!machines.isEmpty()){
+
+                for(InfinispanMachine machine : machines){
+
+                    Object result = invokeInMachine(machine, infinispanDomain, cacheName, "DataPlacementManager",
+                            "isRoundInProgress", EMPTY_PARAMETER, EMPTY_SIGNATURE);
+
+                    if( result instanceof Boolean ){
+                        Boolean resultBoolean = (Boolean) result;
+                        if( !resultBoolean ){ // finished!
+                            machines.remove( machine );
+                        }
+                    }
+
+                }
+            }
+        }
+        log.info("Data degree changed");
+    }
+
 
     /**
      * Generic JMX invocation method, that is only invoked in the specific {@param machine}
@@ -242,12 +328,10 @@ public class InfinispanActuator {
      */
     public final Object invokeInMachine(InfinispanMachine machine, String infinispanDomain, String cacheName,
                                         String componentName, String methodName, Object[] parameter,
-                                        String[] signature) throws NoJmxProtocolRegisterException, ConnectionException,
-            ComponentNotFoundException, InvocationException {
-        if (log.isInfoEnabled()) {
-            log.info("Invoke in machine [" + machine + "] method " + componentName + "." + methodName +
-                    Arrays.toString(signature));
-        }
+                                        String[] signature) throws NoJmxProtocolRegisterException, InvocationException {
+
+        log.info("Invoke in machine [" + machine + "] method " + componentName + "." + methodName + Arrays.toString(signature));
+
         try {
             MBeanServerConnection connection = createConnection(machine);
             ObjectName objectName = findCacheComponent(connection, infinispanDomain, cacheName, componentName);
@@ -263,11 +347,15 @@ public class InfinispanActuator {
         } catch (InstanceNotFoundException e) {
             log.warn("[" + machine + "] error in method " + componentName + "." + methodName +
                     Arrays.toString(signature), e);
-            throw new ComponentNotFoundException(e);
+            throw new InvocationException(e);
         } catch (IOException e) {
             log.warn("[" + machine + "] error in method " + componentName + "." + methodName +
                     Arrays.toString(signature), e);
-            throw new ConnectionException(e);
+            throw new InvocationException(e);
+        } catch (ConnectionException e) {
+            throw new InvocationException(e);
+        } catch (ComponentNotFoundException e) {
+            throw new InvocationException(e);
         }
     }
 
@@ -282,37 +370,55 @@ public class InfinispanActuator {
      * @param parameter        the method's parameters
      * @param signature        the method's signature
      * @return the value returned by the method invocation
+     * @return null if set of infinispanMachines is empty
      * @throws NoJmxProtocolRegisterException if no JMX protocols are registered
      * @throws InvocationException            if the method was not invoked successfully by any machine registered
      */
-    public final Object invokeOnceInAnyMachine(String infinispanDomain, String cacheName, String componentName,
-                                               String methodName, Object[] parameter, String[] signature)
-            throws NoJmxProtocolRegisterException, InvocationException {
-        if (log.isInfoEnabled()) {
-            log.info("Invoke in *ANY* machine method " + componentName + "." + methodName + Arrays.toString(signature));
-        }
+    public final Object invokeOnceInAnyMachine(String infinispanDomain,
+                                               String cacheName,
+                                               String componentName,
+                                               String methodName,
+                                               Object[] parameter,
+                                               String[] signature) throws InvocationException, NoJmxProtocolRegisterException {
+
+        log.info("Invoke in *ANY* machine method " + componentName + "." + methodName + Arrays.toString(signature));
+
         MBeanServerConnection connection;
         ObjectName objectName;
+        Object retVal = null;
+        boolean succeeded = false;
         synchronized (infinispanMachines) {
-            for (InfinispanMachine machine : infinispanMachines) {
+
+            Iterator<InfinispanMachine> iter = infinispanMachines.iterator();
+            while ( !succeeded && iter.hasNext() ){
+                InfinispanMachine machine = iter.next();
+
                 try {
                     connection = createConnection(machine);
                     objectName = findCacheComponent(connection, infinispanDomain, cacheName, componentName);
-                    Object retVal = connection.invoke(objectName, methodName, parameter, signature);
-                    if (log.isDebugEnabled()) {
-                        log.debug("invoke in any, [" + machine + "] returned in method " + componentName + "." +
-                                methodName + Arrays.toString(signature) + " = " + retVal);
-                    }
-
-                } catch (Exception e) {
-                    if (log.isDebugEnabled()) {
-                        log.debug("invoke in any, [" + machine + "] error in method " + componentName + "." +
-                                methodName + Arrays.toString(signature), e);
-                    }
+                    retVal = connection.invoke(objectName, methodName, parameter, signature);
+                    log.debug("invoke in any, [" + machine + "] returned in method " + componentName + "." +
+                            methodName + Arrays.toString(signature) + " = " + retVal);
+                    succeeded = true;
+                } catch (ConnectionException e) {
+                    log.debug(e);
+                } catch (InstanceNotFoundException e) {
+                    log.debug(e);
+                } catch (MBeanException e) {
+                    log.debug(e);
+                } catch (ReflectionException e) {
+                    log.debug(e);
+                } catch (IOException e) {
+                    log.debug(e);
+                } catch (ComponentNotFoundException e) {
+                    log.debug(e);
                 }
             }
         }
-        throw new InvocationException("An error occurs while trying to invoke " + componentName + "." + methodName);
+        if(!succeeded)
+            throw new InvocationException("An error occurs while trying to invoke " + componentName + "." + methodName + " on each infinispan instance");
+
+        return retVal;
     }
 
     /**
@@ -330,8 +436,7 @@ public class InfinispanActuator {
      */
     public final Map<InfinispanMachine, Object> invokeInAllMachines(String infinispanDomain, String cacheName,
                                                                     String componentName, String methodName,
-                                                                    Object[] parameter, String[] signature)
-            throws NoJmxProtocolRegisterException {
+                                                                    Object[] parameter, String[] signature) {
         if (log.isInfoEnabled()) {
             log.info("Invoke in *ALL* machine method " + componentName + "." + methodName + Arrays.toString(signature));
         }
@@ -389,8 +494,8 @@ public class InfinispanActuator {
                     log.debug("trying to connect to " + machine + " using " + jmxProtocol);
                 }
                 try {
-                    jmxConnector = JMXConnectorFactory.connect(jmxProtocol.createUrl(machine.getHostname(),
-                            machine.getPort()), environment);
+                    jmxConnector = JMXConnectorFactory.connect(jmxProtocol.createUrl( machine.getHostname(),
+                            String.valueOf(machine.getPort()) ), environment);
                 } catch (IOException e) {
                     if (log.isDebugEnabled()) {
                         log.debug("error trying to connect to " + machine + " using " + jmxProtocol, e);
