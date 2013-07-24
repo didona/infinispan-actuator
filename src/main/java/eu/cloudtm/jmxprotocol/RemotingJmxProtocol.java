@@ -38,8 +38,7 @@ public class RemotingJmxProtocol implements JmxProtocol {
         try {
             return new JMXServiceURL(String.format("service:jmx:remoting-jmx://%s:%s", hostname, port));
         } catch (MalformedURLException e) {
-            //no-op
+            throw new IllegalStateException("This should never happen");
         }
-        throw new IllegalStateException("This should never happen");
     }
 }

@@ -38,8 +38,8 @@ public class JmxRMIProtocol implements JmxProtocol {
         try {
             return new JMXServiceURL(String.format("service:jmx:rmi:///jndi/rmi://%s:%s/jmxrmi", hostname, port));
         } catch (MalformedURLException e) {
-            //this should never happen
+            throw new IllegalStateException("Should never happen!");
         }
-        throw new IllegalStateException("Should never happen!");
+
     }
 }
