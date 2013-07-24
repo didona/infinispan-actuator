@@ -75,11 +75,6 @@ public class InfinispanActuator implements IspnActuator {
     private final Set<JmxProtocol> protocols;
     private final Set<InfinispanMachine> machines;
 
-    public InfinispanActuator(String infinispanDomain, String cacheName, int jmxPort) {
-        this(new HashSet<JmxProtocol>(), new HashSet<InfinispanMachine>(), infinispanDomain, cacheName, jmxPort);
-
-    }
-
     public InfinispanActuator(Set<JmxProtocol> jmxProtocols,
                               Set<InfinispanMachine> infinispanMachines,
                               String infinispanDomain, String cacheName, int jmxPort) {
@@ -310,22 +305,22 @@ public class InfinispanActuator implements IspnActuator {
                 try {
                     connection = createConnection(machine);
                     objectName = findCacheComponent(connection, infinispanDomain, cacheName, componentName);
-                    retVal = connection.invoke(objectName, methodName, parameter, signature);
+                        retVal = connection.invoke(objectName, methodName, parameter, signature);
                     log.debug("invoke in any, [" + machine + "] returned in method " + componentName + "." +
                             methodName + Arrays.toString(signature) + " = " + retVal);
                     succeeded = true;
                 } catch (ConnectionException e) {
-                    log.debug(e);
+                    e.printStackTrace();
                 } catch (InstanceNotFoundException e) {
-                    log.debug(e);
+                    e.printStackTrace();
                 } catch (MBeanException e) {
-                    log.debug(e);
+                    e.printStackTrace();
                 } catch (ReflectionException e) {
-                    log.debug(e);
+                    e.printStackTrace();
                 } catch (IOException e) {
-                    log.debug(e);
+                    e.printStackTrace();
                 } catch (ComponentNotFoundException e) {
-                    log.debug(e);
+                    e.printStackTrace();
                 }
             }
         }
@@ -483,7 +478,7 @@ public class InfinispanActuator implements IspnActuator {
                             name);
                 }
                 if (name.getDomain().equals(infinispanDomain)) {
-                    if ("Cache".equals(name.getKeyProperty("type")) && cacheName.equals(name.getKeyProperty("name")) &&
+                    if ("Cache".equals(name.getKeyProperty("type")) && ObjectName.quote(cacheName).equals(name.getKeyProperty("name")) &&
                             component.equals(name.getKeyProperty("component"))) {
                         if (log.isDebugEnabled()) {
                             log.debug("[" + infinispanDomain + ":" + cacheName + "." + component +
