@@ -10,7 +10,7 @@ import eu.cloudtm.exception.NoJmxProtocolRegisterException;
  * Time: 2:24 PM
  * To change this template use File | Settings | File Templates.
  */
-public interface IspnActuator {
+public interface InfinispanClient {
 
     public void triggerBlockingSwitchReplicationProtocol(String protocolId, boolean forceStop, boolean abortOnStop) throws InvocationException, NoJmxProtocolRegisterException;
 

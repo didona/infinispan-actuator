@@ -27,6 +27,8 @@ import eu.cloudtm.exception.ConnectionException;
 import eu.cloudtm.exception.InvocationException;
 import eu.cloudtm.exception.NoJmxProtocolRegisterException;
 import eu.cloudtm.jmxprotocol.JmxProtocol;
+import eu.cloudtm.jmxprotocol.JmxRMIProtocol;
+import eu.cloudtm.jmxprotocol.RemotingJmxProtocol;
 import org.apache.log4j.Logger;
 
 import javax.management.*;
@@ -44,7 +46,7 @@ import java.util.*;
  * @author Pedro Ruivo
  * @since 1.0
  */
-public class InfinispanActuator implements IspnActuator {
+public class InfinispanClientImpl implements InfinispanClient {
 
     private static final int MAX_RETRIES = 100;
     private static final long TIME_TO_SLEEP_MS = 2000;
@@ -70,15 +72,17 @@ public class InfinispanActuator implements IspnActuator {
      */
     public static final String[] EMPTY_SIGNATURE = new String[0];
 
-    private static final Logger log = Logger.getLogger(InfinispanActuator.class);
+    private static final Logger log = Logger.getLogger(InfinispanClientImpl.class);
 
-    private final Set<JmxProtocol> protocols;
+    private final Set<JmxProtocol> protocols = new HashSet<JmxProtocol>(){{
+        add( new JmxRMIProtocol() );
+        add( new RemotingJmxProtocol() );
+    }};
     private final Set<InfinispanMachine> machines;
 
-    public InfinispanActuator(Set<JmxProtocol> jmxProtocols,
-                              Set<InfinispanMachine> infinispanMachines,
-                              String infinispanDomain, String cacheName, int jmxPort) {
-        this.protocols = new HashSet<JmxProtocol>(jmxProtocols);
+    public InfinispanClientImpl(Set<InfinispanMachine> infinispanMachines,
+                                String infinispanDomain, String cacheName,
+                                int jmxPort) {
         this.machines = new HashSet<InfinispanMachine>(infinispanMachines);
         this.infinispanDomain = infinispanDomain;
         this.cacheName = cacheName;
@@ -273,6 +277,50 @@ public class InfinispanActuator implements IspnActuator {
     }
 
     /**
+     * Generic JMX invocation method, that is only invoked in the specific {@param machine}
+     *
+     * @param machine          the machine to be invoked
+     * @param componentName    the component name
+     * @param attributeName       the attribute name
+     * @return the value returned by the method invocation
+     * @throws NoJmxProtocolRegisterException if no JMX Protocol is registered
+     * @throws ConnectionException            if the connection ti the {@param machine} was not successfully made by
+     *                                        any of the JMX protocols
+     * @throws ComponentNotFoundException     if the component specified was not found
+     * @throws InvocationException            if the method was not invoked successfully
+     */
+    public final Object getAttributeInMachine(InfinispanMachine machine, String componentName, String attributeName)
+            throws NoJmxProtocolRegisterException, InvocationException {
+
+        log.info("GetAttribute in machine [" + machine + "] method " + componentName + "." + attributeName);
+
+        try {
+            MBeanServerConnection connection = createConnection(machine);
+            ObjectName objectName = findCacheComponent(connection, infinispanDomain, cacheName, componentName);
+            return connection.getAttribute(objectName, attributeName);
+        } catch (ReflectionException e) {
+            log.warn("[" + machine + "] error in method " + componentName + "." + attributeName, e);
+            throw new InvocationException(e);
+        } catch (MBeanException e) {
+            log.warn("[" + machine + "] error in method " + componentName + "." + attributeName, e);
+            throw new InvocationException(e);
+        } catch (InstanceNotFoundException e) {
+            log.warn("[" + machine + "] error in method " + componentName + "." + attributeName, e);
+            throw new InvocationException(e);
+        } catch (IOException e) {
+            log.warn("[" + machine + "] error in method " + componentName + "." + attributeName, e);
+            throw new InvocationException(e);
+        } catch (ConnectionException e) {
+            throw new InvocationException(e);
+        } catch (ComponentNotFoundException e) {
+            throw new InvocationException(e);
+        } catch (AttributeNotFoundException e) {
+            throw new InvocationException(e);
+        }
+    }
+
+
+    /**
      * Generic JMX invocation that tries to invoke the method in one of the machines registered, ensuring that the
      * method is invoked at least once (or it throws an exception)
      *
@@ -305,7 +353,7 @@ public class InfinispanActuator implements IspnActuator {
                 try {
                     connection = createConnection(machine);
                     objectName = findCacheComponent(connection, infinispanDomain, cacheName, componentName);
-                        retVal = connection.invoke(objectName, methodName, parameter, signature);
+                    retVal = connection.invoke(objectName, methodName, parameter, signature);
                     log.debug("invoke in any, [" + machine + "] returned in method " + componentName + "." +
                             methodName + Arrays.toString(signature) + " = " + retVal);
                     succeeded = true;
@@ -566,7 +614,9 @@ public class InfinispanActuator implements IspnActuator {
 
                 if(roundForCurrentMachine == currentRoundId){
                     // 3.b currentMachine is aligned on the round...asking isRoundInProgress
-                    Boolean isRoundInProgress = (Boolean) invokeInMachine(currentMachine, "DataPlacementManager", "isRoundInProgress",
+                    Boolean isRoundInProgress = (Boolean) invokeInMachine(currentMachine,
+                            "DataPlacementManager",
+                            "isRoundInProgress",
                             EMPTY_PARAMETER, EMPTY_SIGNATURE);
                     if( !isRoundInProgress ){
                         changingSet.remove( currentMachine );
@@ -592,7 +642,7 @@ public class InfinispanActuator implements IspnActuator {
 
         // 2. execute switchTo, it returns currentEpoch + 1
         Long currentEpoch = (Long) invokeInMachine(coordinator, "ReconfigurableReplicationManager", "switchTo", new Object[]{protocolId, forceStop, abortOnStop},
-                new String[]{"String", "boolean", "boolean"});
+                new String[]{"java.lang.String", "boolean", "boolean"});
 
         // 3. Spin while all the nodes are on the same epoch &&
         Set<InfinispanMachine> changingSet = new HashSet(machines);
@@ -609,7 +659,8 @@ public class InfinispanActuator implements IspnActuator {
                 Long epochForCurrentMachine = (Long) entry.getValue();
                 if(epochForCurrentMachine == currentEpoch){
                     // 3.b currentMachine is aligned on the round...asking currentState
-                    String currentState = (String) invokeInMachine(currentMachine, "ReconfigurableReplicationManager", "getCurrentState",
+                    String currentState = (String) invokeInMachine(currentMachine,
+                            "ReconfigurableReplicationManager", "getCurrentState",
                             EMPTY_PARAMETER, EMPTY_SIGNATURE);
                     if( currentState.equals("SAFE") ){
                         changingSet.remove( currentMachine );
@@ -635,7 +686,7 @@ public class InfinispanActuator implements IspnActuator {
 
     private InfinispanMachine retrieveCoordinator() throws InvocationException, NoJmxProtocolRegisterException {
         String hostname = (String) invokeOnceInAnyMachine("DataPlacementManager", "getCoordinatorHostName", EMPTY_PARAMETER, EMPTY_SIGNATURE);
-        log.debug("Coordinator's hostname: " + hostname);
+        System.out.println("Coordinator's hostname: " + hostname);
         InfinispanMachine coordinator = new InfinispanMachine(hostname, jmxPort);
         return coordinator;
     }

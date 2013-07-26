@@ -6,7 +6,6 @@ import eu.cloudtm.jmxprotocol.JmxProtocol;
 import eu.cloudtm.jmxprotocol.JmxRMIProtocol;
 import eu.cloudtm.jmxprotocol.RemotingJmxProtocol;
 import org.apache.log4j.Logger;
-import org.apache.log4j.spi.LoggerFactory;
 
 import java.util.HashSet;
 import java.util.Set;
@@ -30,17 +29,28 @@ public class Test {
 
         Set<InfinispanMachine> machines = new HashSet<InfinispanMachine>();
         machines.add( new InfinispanMachine("localhost", 9998) );
+        machines.add( new InfinispanMachine("localhost", 9997) );
+        machines.add( new InfinispanMachine("localhost", 9996) );
+        machines.add( new InfinispanMachine("localhost", 9995) );
 
-        InfinispanActuator actuator = new InfinispanActuator(protocols, machines, "org.infinispan", "x(dist_sync)", 9998);
+        InfinispanClientImpl actuator = new InfinispanClientImpl(machines, "org.infinispan", "x(dist_sync)", 9998);
+
         try {
             actuator.triggerBlockingSwitchReplicationProtocol("TO", false, false);
+            actuator.triggerBlockingSwitchReplicationDegree(1);
+
+            for(InfinispanMachine m : machines){
+                //Boolean response = (Boolean) actuator.getAttributeInMachine(m, "DataPlacementManager", "roundInProgress");
+                //System.out.println("resp: " + response);
+            }
         } catch (InvocationException e) {
             throw new RuntimeException(e);
         } catch (NoJmxProtocolRegisterException e) {
             throw new RuntimeException(e);
         }
 
-        log.info("Switched!");
-
+        System.out.println("Finished!");
     }
+
+
 }
