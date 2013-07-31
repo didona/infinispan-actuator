@@ -20,7 +20,7 @@
  * Software Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA
  * 02110-1301 USA, or see the FSF site: http://www.fsf.org.
  */
-package eu.cloudtm;
+package eu.cloudtm.InfinispanClient;
 
 /**
  * Represents an Infinispan JVM instance, composed by an hostname and a port
@@ -32,6 +32,7 @@ public class InfinispanMachine {
 
     private final String hostname;
     private final Integer port;
+    private final String ip;
     private final String username;
     private final String password;
 
@@ -40,28 +41,32 @@ public class InfinispanMachine {
      *
      * @param hostname the hostname (non-null)
      * @param port     the JMX port (non-null)
+     * @param ip       the ip address (non-null)
      * @param username the JMX username (optional)
      * @param password the JMX password (optional)
      */
-    public InfinispanMachine(String hostname, Integer port, String username, String password) {
+    public InfinispanMachine(String hostname, Integer port, String ip, String username, String password) {
         if (hostname == null) {
             throw new NullPointerException("Hostname cannot be null");
         } else if (port == null) {
             throw new NullPointerException("Port cannot be null");
+        } else if (ip == null) {
+            throw new NullPointerException("Ip cannot be null");
         }
 
         this.hostname = hostname;
         this.port = port;
+        this.ip = ip;
         this.username = username;
         this.password = password;
     }
 
 
     /**
-     * see {@link #InfinispanMachine(String, Integer, String, String)}
+     * see {@link #InfinispanMachine(String, Integer, String, String, String)}
      */
-    public InfinispanMachine(String hostname, int port) {
-        this(hostname, port, null, null);
+    public InfinispanMachine(String hostname, int port, String ip) {
+        this(hostname, port, ip, null, null);
     }
 
     /**
@@ -76,6 +81,13 @@ public class InfinispanMachine {
      */
     public final int getPort() {
         return port;
+    }
+
+    /**
+     * @return the ip address represented by this instance
+     */
+    public final String getIp() {
+        return ip;
     }
 
     /**

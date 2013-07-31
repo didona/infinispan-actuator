@@ -20,21 +20,17 @@
  * Software Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA
  * 02110-1301 USA, or see the FSF site: http://www.fsf.org.
  */
-package eu.cloudtm.exception;
+package eu.cloudtm.InfinispanClient.exception;
 
 /**
- * Represents all the connection issues with the remote machine
+ * Thrown when no JMX protocols are registered
  *
  * @author Pedro Ruivo
  * @since 1.0
  */
-public class ConnectionException extends Exception {
+public class NoJmxProtocolRegisterException extends Exception {
 
-    public ConnectionException(Throwable throwable) {
-        super(throwable);
-    }
-
-    public ConnectionException(String message) {
-        super(message);
+    public NoJmxProtocolRegisterException() {
+        super("No Jmx Protocols found. Please register at least one protocol");
     }
 }

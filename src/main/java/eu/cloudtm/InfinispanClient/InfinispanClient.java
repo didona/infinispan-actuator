@@ -1,7 +1,7 @@
-package eu.cloudtm;
+package eu.cloudtm.InfinispanClient;
 
-import eu.cloudtm.exception.InvocationException;
-import eu.cloudtm.exception.NoJmxProtocolRegisterException;
+import eu.cloudtm.InfinispanClient.exception.InvocationException;
+import eu.cloudtm.InfinispanClient.exception.NoJmxProtocolRegisterException;
 
 /**
  * Created with IntelliJ IDEA.

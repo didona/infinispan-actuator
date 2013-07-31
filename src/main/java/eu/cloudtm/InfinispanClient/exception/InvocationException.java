@@ -20,25 +20,20 @@
  * Software Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA
  * 02110-1301 USA, or see the FSF site: http://www.fsf.org.
  */
-package eu.cloudtm.jmxprotocol;
-
-import javax.management.remote.JMXServiceURL;
-import java.net.MalformedURLException;
+package eu.cloudtm.InfinispanClient.exception;
 
 /**
- * // TODO: Document this
+ * Represents all the invocation issues
  *
  * @author Pedro Ruivo
  * @since 1.0
  */
-public class RemotingJmxProtocol implements JmxProtocol {
+public class InvocationException extends Exception {
+    public InvocationException(Throwable throwable) {
+        super(throwable);
+    }
 
-    @Override
-    public JMXServiceURL createUrl(String hostname, String port) {
-        try {
-            return new JMXServiceURL(String.format("service:jmx:remoting-jmx://%s:%s", hostname, port));
-        } catch (MalformedURLException e) {
-            throw new IllegalStateException("This should never happen");
-        }
+    public InvocationException(String message) {
+        super(message);
     }
 }

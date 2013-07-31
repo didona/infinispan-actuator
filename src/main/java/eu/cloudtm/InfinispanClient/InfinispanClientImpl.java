@@ -20,15 +20,14 @@
  * Software Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA
  * 02110-1301 USA, or see the FSF site: http://www.fsf.org.
  */
-package eu.cloudtm;
+package eu.cloudtm.InfinispanClient;
 
-import eu.cloudtm.exception.ComponentNotFoundException;
-import eu.cloudtm.exception.ConnectionException;
-import eu.cloudtm.exception.InvocationException;
-import eu.cloudtm.exception.NoJmxProtocolRegisterException;
-import eu.cloudtm.jmxprotocol.JmxProtocol;
-import eu.cloudtm.jmxprotocol.JmxRMIProtocol;
-import eu.cloudtm.jmxprotocol.RemotingJmxProtocol;
+import eu.cloudtm.InfinispanClient.exception.ComponentNotFoundException;
+import eu.cloudtm.InfinispanClient.exception.ConnectionException;
+import eu.cloudtm.InfinispanClient.exception.InvocationException;
+import eu.cloudtm.InfinispanClient.exception.NoJmxProtocolRegisterException;
+import eu.cloudtm.InfinispanClient.jmxprotocol.JmxProtocol;
+import eu.cloudtm.InfinispanClient.jmxprotocol.JmxRMIProtocol;
 import org.apache.log4j.Logger;
 
 import javax.management.*;
@@ -44,131 +43,79 @@ import java.util.*;
  * <br/>
  *
  * @author Pedro Ruivo
+ * @author Fabio Perfetti
  * @since 1.0
  */
 public class InfinispanClientImpl implements InfinispanClient {
+
+    private static final Logger log = Logger.getLogger(InfinispanClientImpl.class);
 
     private static final int MAX_RETRIES = 100;
     private static final long TIME_TO_SLEEP_MS = 2000;
 
     private final String infinispanDomain;
     private final String cacheName;
-    private final int jmxPort;
 
+
+    private MBeanServerConnection mBeanServerConnection = null;
 
     /**
      * represents an invocation error. used in
      * {@link #invokeInAllMachines(String, String, Object[], String[])}
      */
     public static final Object ERROR_INVOKING = new Object();
+
     /**
      * an array to use when the method to invoke has no parameters. using this array is not mandatory but it will
      * avoid creating every time a new array
      */
     public static final Object[] EMPTY_PARAMETER = new Object[0];
+
     /**
      * an array to use when the method to invoke has no parameters. using this array is not mandatory but it will
      * avoid creating every time a new array
      */
     public static final String[] EMPTY_SIGNATURE = new String[0];
 
-    private static final Logger log = Logger.getLogger(InfinispanClientImpl.class);
-
     private final Set<JmxProtocol> protocols = new HashSet<JmxProtocol>(){{
         add( new JmxRMIProtocol() );
-        add( new RemotingJmxProtocol() );
+        //add( new RemotingJmxProtocol() );
     }};
+
     private final Set<InfinispanMachine> machines;
 
     public InfinispanClientImpl(Set<InfinispanMachine> infinispanMachines,
-                                String infinispanDomain, String cacheName,
-                                int jmxPort) {
+                                String infinispanDomain, String cacheName
+    ) {
         this.machines = new HashSet<InfinispanMachine>(infinispanMachines);
         this.infinispanDomain = infinispanDomain;
         this.cacheName = cacheName;
-        this.jmxPort = jmxPort;
     }
 
     /**
-     * it register a new {@link JmxProtocol}. By default, the RMI and the remoting-jmx protocols are already registered
+     * return a {@link InfinispanMachine} with the given hostname.
      *
-     * @param protocol the JMX protocol
-     * @return true if successed, false otherwise
-     *
+     * @param hostname the hostname machine
      */
-    private final boolean registerJmxProtocol(JmxProtocol protocol) {
-        if(protocol == null)
-            return false;
+    private final InfinispanMachine hostname2machine(String hostname) {
+        if(hostname == null)
+            throw new NullPointerException("hostname cannot be null");
 
-        boolean ret;
-        synchronized (protocols) {
-            ret = protocols.add(protocol);
-            if (ret) {
-                log.info("Registered a new JmxProtocol: " + protocol);
-            } else {
-                log.info("Tried to register a already existing JmxProtocol [" + protocol + "]... ignored");
-            }
-        }
-        return ret;
-    }
-
-    /**
-     * adds a new {@link InfinispanMachine} to the machine list.
-     *
-     * @param machine the new machine
-     */
-    private final boolean addMachine(InfinispanMachine machine) {
-        if(machine == null)
-            return false;
-
-        boolean ret;
+        InfinispanMachine ret = null;
         synchronized (machines) {
-            ret = machines.add(machine);
-            if (ret) {
-                log.info("Added a new InfinispanMachine: " + machine);
-            } else {
-                log.info("Tried to add a already existing InfinispanMachine [" + machine + "]... ignored");
-            }
-        }
-        return ret;
-    }
-
-    /**
-     * removes the machine with the {@param hostname} and {@param port} from the available machines list.
-     *
-     * @param hostname the hostname
-     * @param port     the port (String representation)
-     */
-    private final boolean removeMachine(String hostname, int port) {
-        boolean ret;
-        synchronized (machines) {
-            InfinispanMachine toRemove = new InfinispanMachine(hostname, port);
-
-            ret = machines.remove(toRemove);
-            if(ret){
-                log.info("Removed machine " + toRemove);
-            } else {
-                log.info("Tried to remove the machine [" + hostname + ":" + port + "] but it was not found");
-            }
-        }
-        return ret;
-    }
-
-    /**
-     * removes all the machines with the {@param hostname} independent of the port
-     *
-     * @param hostname the hostname
-     */
-    private final void removeMachines(String hostname) {
-        synchronized (machines) {
-            for (InfinispanMachine machine : machines) {
-                if (machine.getHostname().equals(hostname)) {
-                    machines.remove(machine);
-                    log.info("Removing machines with hostname " + hostname + ". Removed " + machine);
+            for( InfinispanMachine machine : machines ){
+                if(machine.getHostname().equals(hostname)){
+                    ret = machine;
+                    break;
                 }
             }
         }
+        if(ret == null){
+            throw new RuntimeException("Hostname " + hostname + " doesn't belong to any machine!!" );
+        }
+        return ret;
     }
+
 
     /**
      * triggers the data placement optimizer.
@@ -292,7 +239,7 @@ public class InfinispanClientImpl implements InfinispanClient {
     public final Object getAttributeInMachine(InfinispanMachine machine, String componentName, String attributeName)
             throws NoJmxProtocolRegisterException, InvocationException {
 
-        log.info("GetAttribute in machine [" + machine + "] method " + componentName + "." + attributeName);
+        log.trace("GetAttribute in machine [" + machine + "] method " + componentName + "." + attributeName);
 
         try {
             MBeanServerConnection connection = createConnection(machine);
@@ -321,6 +268,42 @@ public class InfinispanClientImpl implements InfinispanClient {
 
 
     /**
+     * Generic JMX invocation, that invokes the method in all the machines.
+     *
+     * @param componentName    the component name
+     * @param attributeName       the method name
+     * @return a map between the {@link InfinispanMachine} and the returned value. If the invocation fails for some
+     *         machine, them the value is equals to {@link #ERROR_INVOKING}
+     * @throws NoJmxProtocolRegisterException if no JMX protocols are registered
+     */
+    public final Map<InfinispanMachine, Object> getAttributeInAllMachine(String componentName, String attributeName) {
+        log.trace("Invoke in *ALL* machine method " + componentName + "." + attributeName );
+        Map<InfinispanMachine, Object> results = new HashMap<InfinispanMachine, Object>();
+        MBeanServerConnection connection;
+        ObjectName objectName;
+
+        synchronized (machines) {
+            for (InfinispanMachine machine : machines) {
+                try {
+                    connection = createConnection(machine);
+                    objectName = findCacheComponent(connection, infinispanDomain, cacheName, componentName);
+                    Object result = connection.getAttribute(objectName, attributeName);
+                    results.put(machine, result);
+                } catch (Exception e) {
+                    log.debug("invoke in all, [" + machine + "] error in method " + componentName + "." + attributeName, e);
+                    results.put(machine, ERROR_INVOKING);
+                }
+            }
+        }
+
+        log.debug("invoke in all, returned in method " + componentName + "." + attributeName + " = " + results);
+        return results;
+    }
+
+
+
+
+    /**
      * Generic JMX invocation that tries to invoke the method in one of the machines registered, ensuring that the
      * method is invoked at least once (or it throws an exception)
      *
@@ -338,7 +321,7 @@ public class InfinispanClientImpl implements InfinispanClient {
                                                Object[] parameter,
                                                String[] signature) throws InvocationException, NoJmxProtocolRegisterException {
 
-        log.info("Invoke in *ANY* machine method " + componentName + "." + methodName + Arrays.toString(signature));
+        log.trace("Invoke in *ANY* machine method " + componentName + "." + methodName + Arrays.toString(signature));
 
         MBeanServerConnection connection;
         ObjectName objectName;
@@ -382,7 +365,7 @@ public class InfinispanClientImpl implements InfinispanClient {
                                                        String methodName, Object[] parameter, String[] signature)
             throws NoJmxProtocolRegisterException, InvocationException {
         if (log.isInfoEnabled()) {
-            log.info("Invoke in *ANY* machine method Worker." + methodName + Arrays.toString(signature));
+            log.trace("Invoke in *ANY* machine method Worker." + methodName + Arrays.toString(signature));
         }
         MBeanServerConnection connection;
         ObjectName objectName;
@@ -422,7 +405,7 @@ public class InfinispanClientImpl implements InfinispanClient {
     public final Map<InfinispanMachine, Object> invokeInAllMachines(String componentName, String methodName,
                                                                     Object[] parameter, String[] signature) {
         if (log.isInfoEnabled()) {
-            log.info("Invoke in *ALL* machine method " + componentName + "." + methodName + Arrays.toString(signature));
+            log.trace("Invoke in *ALL* machine method " + componentName + "." + methodName + Arrays.toString(signature));
         }
         Map<InfinispanMachine, Object> results = new HashMap<InfinispanMachine, Object>();
         MBeanServerConnection connection;
@@ -461,43 +444,39 @@ public class InfinispanClientImpl implements InfinispanClient {
      */
     private MBeanServerConnection createConnection(InfinispanMachine machine) throws NoJmxProtocolRegisterException,
             ConnectionException {
-        MBeanServerConnection mBeanServerConnection = null;
-        Map<String, Object> environment = new HashMap<String, Object>();
-        if (machine.getUsername() != null && !machine.getUsername().isEmpty()) {
-            environment.put(JMXConnector.CREDENTIALS, new String[]{machine.getUsername(), machine.getPassword()});
-        }
-        synchronized (protocols) {
-            if (protocols.isEmpty()) {
-                throw new NoJmxProtocolRegisterException();
+
+        if( mBeanServerConnection == null ){
+            Map<String, Object> environment = new HashMap<String, Object>();
+            if (machine.getUsername() != null && !machine.getUsername().isEmpty()) {
+                environment.put(JMXConnector.CREDENTIALS, new String[]{machine.getUsername(), machine.getPassword()});
             }
+            synchronized (protocols) {
+                if (protocols.isEmpty()) {
+                    throw new NoJmxProtocolRegisterException();
+                }
 
-            JMXConnector jmxConnector;
+                JMXConnector jmxConnector;
 
-            for (JmxProtocol jmxProtocol : protocols) {
-                if (log.isDebugEnabled()) {
+                for (JmxProtocol jmxProtocol : protocols) {
                     log.debug("trying to connect to " + machine + " using " + jmxProtocol);
-                }
-                try {
-                    jmxConnector = JMXConnectorFactory.connect(jmxProtocol.createUrl( machine.getHostname(),
-                            String.valueOf(machine.getPort()) ), environment);
-                } catch (IOException e) {
-                    if (log.isDebugEnabled()) {
+                    try {
+                        jmxConnector = JMXConnectorFactory.connect(jmxProtocol.createUrl( machine.getIp(),
+                                String.valueOf(machine.getPort()) ), environment);
+                    } catch (IOException e) {
                         log.debug("error trying to connect to " + machine + " using " + jmxProtocol, e);
+                        continue;
                     }
-                    continue;
-                }
-                try {
-                    mBeanServerConnection = jmxConnector.getMBeanServerConnection();
-                    break;
-                } catch (IOException e) {
-                    if (log.isDebugEnabled()) {
+                    try {
+                        mBeanServerConnection = jmxConnector.getMBeanServerConnection();
+                        break;
+                    } catch (IOException e) {
                         log.debug("error trying to connect to " + machine + " using " + jmxProtocol, e);
                     }
                 }
             }
-        }
-        if (mBeanServerConnection == null) {
-            throw new ConnectionException("Cannot Connect to " + machine);
+            if (mBeanServerConnection == null) {
+                throw new ConnectionException("Cannot Connect to " + machine);
+            }
         }
         return mBeanServerConnection;
     }
@@ -599,27 +578,31 @@ public class InfinispanClientImpl implements InfinispanClient {
         // 3. Spin while all the nodes are on the same roundId && !roundInProgress
         Set<InfinispanMachine> changingSet = new HashSet(machines);
 
-        boolean awaked = false;
+        boolean awake = false;
         int maxRetries = MAX_RETRIES;
 
-        while( !changingSet.isEmpty() && !awaked && maxRetries>0 ){
+        while( !changingSet.isEmpty() && !awake && maxRetries>0 ){
 
             // 3.a asking roundId to all nodes
-            Map<InfinispanMachine, Object> machine2epoch = invokeInAllMachines("DataPlacementManager",
-                    "getCurrentRoundId", EMPTY_PARAMETER, EMPTY_SIGNATURE);
+            Map<InfinispanMachine, Object> machine2epoch = getAttributeInAllMachine("DataPlacementManager",
+                    "currentRoundId");
 
             for( Map.Entry<InfinispanMachine, Object> entry : machine2epoch.entrySet() ){
                 InfinispanMachine currentMachine = entry.getKey();
-                Long roundForCurrentMachine = (Long) entry.getValue();
 
-                if(roundForCurrentMachine == currentRoundId){
-                    // 3.b currentMachine is aligned on the round...asking isRoundInProgress
-                    Boolean isRoundInProgress = (Boolean) invokeInMachine(currentMachine,
-                            "DataPlacementManager",
-                            "isRoundInProgress",
-                            EMPTY_PARAMETER, EMPTY_SIGNATURE);
-                    if( !isRoundInProgress ){
-                        changingSet.remove( currentMachine );
+                if(entry.getValue() == ERROR_INVOKING) {
+                    log.warn("An error occurred during connection with " + currentMachine + "! Removing the machine...");
+                    changingSet.remove( currentMachine );
+                } else {
+                    Long roundForCurrentMachine = (Long) entry.getValue();
+                    if(roundForCurrentMachine == currentRoundId){
+                        // 3.b currentMachine is aligned on the round...asking isRoundInProgress
+                        Boolean isRoundInProgress = (Boolean) getAttributeInMachine(currentMachine,
+                                "DataPlacementManager",
+                                "roundInProgress");
+                        if( !isRoundInProgress ){
+                            changingSet.remove( currentMachine );
+                        }
                     }
                 }
             }
@@ -628,42 +611,50 @@ public class InfinispanClientImpl implements InfinispanClient {
                 Thread.sleep(TIME_TO_SLEEP_MS);
                 maxRetries--;
             } catch (InterruptedException e) {
-                log.warn("Awaked...exiting");
-                awaked = true;
+                log.warn("Awake...exit!");
+                awake = true;
             }
         }
 
     }
 
     @Override
-    public void triggerBlockingSwitchReplicationProtocol(String protocolId, boolean forceStop, boolean abortOnStop) throws InvocationException, NoJmxProtocolRegisterException {
+    public void triggerBlockingSwitchReplicationProtocol(String protocolId, boolean forceStop, boolean abortOnStop)
+            throws InvocationException, NoJmxProtocolRegisterException {
+
         // 1. retrieve coordinator
         InfinispanMachine coordinator = retrieveCoordinator();
 
         // 2. execute switchTo, it returns currentEpoch + 1
-        Long currentEpoch = (Long) invokeInMachine(coordinator, "ReconfigurableReplicationManager", "switchTo", new Object[]{protocolId, forceStop, abortOnStop},
+        Long currentEpoch = (Long) invokeInMachine(coordinator, "ReconfigurableReplicationManager", "switchTo",
+                new Object[]{protocolId, forceStop, abortOnStop},
                 new String[]{"java.lang.String", "boolean", "boolean"});
 
         // 3. Spin while all the nodes are on the same epoch &&
         Set<InfinispanMachine> changingSet = new HashSet(machines);
 
-        boolean awaked = false;
+        boolean awake = false;
         int maxRetries = MAX_RETRIES;
 
-        while( !changingSet.isEmpty() && !awaked && maxRetries>0 ){
-            Map<InfinispanMachine, Object> machine2epoch = invokeInAllMachines("ReconfigurableReplicationManager",
-                    "getCurrentEpoch", EMPTY_PARAMETER, EMPTY_SIGNATURE);
+        while( !changingSet.isEmpty() && !awake && maxRetries>0 ){
+            Map<InfinispanMachine, Object> machine2epoch =
+                    getAttributeInAllMachine( "ReconfigurableReplicationManager", "currentEpoch");
 
             for( Map.Entry<InfinispanMachine, Object> entry : machine2epoch.entrySet() ){
                 InfinispanMachine currentMachine = entry.getKey();
-                Long epochForCurrentMachine = (Long) entry.getValue();
-                if(epochForCurrentMachine == currentEpoch){
-                    // 3.b currentMachine is aligned on the round...asking currentState
-                    String currentState = (String) invokeInMachine(currentMachine,
-                            "ReconfigurableReplicationManager", "getCurrentState",
-                            EMPTY_PARAMETER, EMPTY_SIGNATURE);
-                    if( currentState.equals("SAFE") ){
-                        changingSet.remove( currentMachine );
+
+                if(entry.getValue() == ERROR_INVOKING) {
+                    log.warn("An error occurred during connection with " + currentMachine + "! Removing the machine...");
+                    changingSet.remove( currentMachine );
+                } else {
+                    Long epochForCurrentMachine = (Long) entry.getValue();
+                    if(epochForCurrentMachine == currentEpoch){
+                        // 3.b currentMachine is aligned on the round...asking currentState
+                        String currentState = (String) getAttributeInMachine(currentMachine,
+                                "ReconfigurableReplicationManager", "currentState" );
+                        if( currentState.equals("SAFE") ){
+                            changingSet.remove( currentMachine );
+                        }
                     }
                 }
             }
@@ -672,8 +663,8 @@ public class InfinispanClientImpl implements InfinispanClient {
                 Thread.sleep(TIME_TO_SLEEP_MS);
                 maxRetries--;
             } catch (InterruptedException e) {
-                log.warn("Awaked...exiting");
-                awaked = true;
+                log.warn("Awake...exit!");
+                awake = true;
             }
         }
 
@@ -686,10 +677,94 @@ public class InfinispanClientImpl implements InfinispanClient {
 
     private InfinispanMachine retrieveCoordinator() throws InvocationException, NoJmxProtocolRegisterException {
         String hostname = (String) invokeOnceInAnyMachine("DataPlacementManager", "getCoordinatorHostName", EMPTY_PARAMETER, EMPTY_SIGNATURE);
-        System.out.println("Coordinator's hostname: " + hostname);
-        InfinispanMachine coordinator = new InfinispanMachine(hostname, jmxPort);
+        InfinispanMachine coordinator = hostname2machine(hostname);
+
+        log.info("Coordinator: [ hostname: " + coordinator.getHostname() + ", ip: " + coordinator.getIp() + " ]");
         return coordinator;
     }
 
 
 }
+
+
+//    /**
+//     * it register a new {@link JmxProtocol}. By default, the RMI and the remoting-jmx protocols are already registered
+//     *
+//     * @param protocol the JMX protocol
+//     * @return true if successed, false otherwise
+//     *
+//     */
+//    private final boolean registerJmxProtocol(JmxProtocol protocol) {
+//        if(protocol == null)
+//            return false;
+//
+//        boolean ret;
+//        synchronized (protocols) {
+//            ret = protocols.add(protocol);
+//            if (ret) {
+//                log.info("Registered a new JmxProtocol: " + protocol);
+//            } else {
+//                log.info("Tried to register a already existing JmxProtocol [" + protocol + "]... ignored");
+//            }
+//        }
+//        return ret;
+//    }
+//
+//
+//    /**
+//     * adds a new {@link InfinispanMachine} to the machine list.
+//     *
+//     * @param machine the new machine
+//     */
+//    private final boolean addMachine(InfinispanMachine machine) {
+//        if(machine == null)
+//            return false;
+//
+//        boolean ret;
+//        synchronized (machines) {
+//            ret = machines.add(machine);
+//            if (ret) {
+//                log.info("Added a new InfinispanMachine: " + machine);
+//            } else {
+//                log.info("Tried to add a already existing InfinispanMachine [" + machine + "]... ignored");
+//            }
+//        }
+//        return ret;
+//    }
+//
+//    /**
+//     * removes the machine with the {@param hostname} and {@param port} from the available machines list.
+//     *
+//     * @param hostname the hostname
+//     * @param port     the port (String representation)
+//     */
+//    private final boolean removeMachine(String hostname, int port, String ip) {
+//        boolean ret;
+//        synchronized (machines) {
+//            InfinispanMachine toRemove = new InfinispanMachine(hostname, port, ip);
+//
+//            ret = machines.remove(toRemove);
+//            if(ret){
+//                log.info("Removed machine " + toRemove);
+//            } else {
+//                log.info("Tried to remove the machine [" + hostname + ":" + port + "] but it was not found");
+//            }
+//        }
+//        return ret;
+//    }
+//
+//    /**
+//     * removes all the machines with the {@param hostname} independent of the port
+//     *
+//     * @param hostname the hostname
+//     */
+//    private final void removeMachines(String hostname) {
+//        synchronized (machines) {
+//            for (InfinispanMachine machine : machines) {
+//                if (machine.getHostname().equals(hostname)) {
+//                    machines.remove(machine);
+//                    log.info("Removing machines with hostname " + hostname + ". Removed " + machine);
+//                }
+//            }
+//        }
+//    }

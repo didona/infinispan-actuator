@@ -20,20 +20,21 @@
  * Software Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA
  * 02110-1301 USA, or see the FSF site: http://www.fsf.org.
  */
-package eu.cloudtm.exception;
+package eu.cloudtm.InfinispanClient.exception;
 
 /**
- * Represents all the invocation issues
+ * Represents all the connection issues with the remote machine
  *
  * @author Pedro Ruivo
  * @since 1.0
  */
-public class InvocationException extends Exception {
-    public InvocationException(Throwable throwable) {
+public class ConnectionException extends Exception {
+
+    public ConnectionException(Throwable throwable) {
         super(throwable);
     }
 
-    public InvocationException(String message) {
+    public ConnectionException(String message) {
         super(message);
     }
 }

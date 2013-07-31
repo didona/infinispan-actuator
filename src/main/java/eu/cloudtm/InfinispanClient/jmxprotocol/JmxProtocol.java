@@ -20,17 +20,18 @@
  * Software Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA
  * 02110-1301 USA, or see the FSF site: http://www.fsf.org.
  */
-package eu.cloudtm.exception;
+package eu.cloudtm.InfinispanClient.jmxprotocol;
+
+import javax.management.remote.JMXServiceURL;
 
 /**
- * Thrown when no JMX protocols are registered
+ * // TODO: Document this
  *
  * @author Pedro Ruivo
  * @since 1.0
  */
-public class NoJmxProtocolRegisterException extends Exception {
+public interface JmxProtocol {
 
-    public NoJmxProtocolRegisterException() {
-        super("No Jmx Protocols found. Please register at least one protocol");
-    }
+    JMXServiceURL createUrl(String hostname, String port);
+
 }
