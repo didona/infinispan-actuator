@@ -17,4 +17,6 @@ public interface InfinispanClient {
     public void triggerBlockingSwitchReplicationDegree(int replicationDegree) throws InvocationException, NoJmxProtocolRegisterException;
 
     public void triggerBlockingDataPlacement();
+
+    public void triggerRebalancing(boolean enabled) throws InvocationException, NoJmxProtocolRegisterException;
 }

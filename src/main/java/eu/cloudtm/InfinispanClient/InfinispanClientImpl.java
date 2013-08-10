@@ -57,7 +57,9 @@ public class InfinispanClientImpl implements InfinispanClient {
     private final String cacheName;
 
 
-    private MBeanServerConnection mBeanServerConnection = null;
+    private final Map<InfinispanMachine, MBeanServerConnection> machine2connection = new HashMap<InfinispanMachine, MBeanServerConnection>();
+
+    //private MBeanServerConnection mBeanServerConnection = null;
 
     /**
      * represents an invocation error. used in
@@ -104,7 +106,7 @@ public class InfinispanClientImpl implements InfinispanClient {
         InfinispanMachine ret = null;
         synchronized (machines) {
             for( InfinispanMachine machine : machines ){
-                if(machine.getHostname().equals(hostname)){
+                if(machine.getHostname().contains(hostname)){
                     ret = machine;
                     break;
                 }
@@ -129,7 +131,7 @@ public class InfinispanClientImpl implements InfinispanClient {
     @Deprecated
     public final void triggerDataPlacement(String infinispanDomain, String cacheName) throws InvocationException, NoJmxProtocolRegisterException {
         invokeOnceInAnyMachine("DataPlacementManager", "dataPlacementRequest",
-                EMPTY_PARAMETER, EMPTY_SIGNATURE);
+                EMPTY_PARAMETER, EMPTY_SIGNATURE, false);
     }
 
     /**
@@ -154,7 +156,7 @@ public class InfinispanClientImpl implements InfinispanClient {
                 new Object[] {protocolId}, new String[] {"String"});
         invokeOnceInAnyMachine("ReconfigurableReplicationManager",
                 "switchTo", new Object[]{protocolId, forceStop, abortOnStop},
-                new String[]{"String", "boolean", "boolean"});
+                new String[]{"String", "boolean", "boolean"}, false);
     }
 
     /**
@@ -172,7 +174,7 @@ public class InfinispanClientImpl implements InfinispanClient {
             throws NoJmxProtocolRegisterException, InvocationException {
         invokeOnceInAnyMachine("DataPlacementManager",
                 "setReplicationDegree", new Object[]{replicationDegree},
-                new String[]{"int"});
+                new String[]{"int"}, false);
     }
 
     /**
@@ -307,10 +309,12 @@ public class InfinispanClientImpl implements InfinispanClient {
      * Generic JMX invocation that tries to invoke the method in one of the machines registered, ensuring that the
      * method is invoked at least once (or it throws an exception)
      *
+     *
      * @param componentName    the component name
      * @param methodName       the method name
      * @param parameter        the method's parameters
      * @param signature        the method's signature
+     * @param global
      * @return the value returned by the method invocation
      * @return null if set of machines is empty
      * @throws NoJmxProtocolRegisterException if no JMX protocols are registered
@@ -319,7 +323,7 @@ public class InfinispanClientImpl implements InfinispanClient {
     public final Object invokeOnceInAnyMachine(String componentName,
                                                String methodName,
                                                Object[] parameter,
-                                               String[] signature) throws InvocationException, NoJmxProtocolRegisterException {
+                                               String[] signature, boolean global) throws InvocationException, NoJmxProtocolRegisterException {
 
         log.trace("Invoke in *ANY* machine method " + componentName + "." + methodName + Arrays.toString(signature));
 
@@ -328,14 +332,16 @@ public class InfinispanClientImpl implements InfinispanClient {
         Object retVal = null;
         boolean succeeded = false;
         synchronized (machines) {
-
+            log.trace("Number of machines: " + machines);
             Iterator<InfinispanMachine> iter = machines.iterator();
             while ( !succeeded && iter.hasNext() ){
                 InfinispanMachine machine = iter.next();
+                log.trace("trying with " + machine);
 
                 try {
                     connection = createConnection(machine);
-                    objectName = findCacheComponent(connection, infinispanDomain, cacheName, componentName);
+                    objectName = global ? findGlobalComponent(connection, infinispanDomain, componentName) :
+                            findCacheComponent(connection, infinispanDomain, cacheName, componentName);
                     retVal = connection.invoke(objectName, methodName, parameter, signature);
                     log.debug("invoke in any, [" + machine + "] returned in method " + componentName + "." +
                             methodName + Arrays.toString(signature) + " = " + retVal);
@@ -444,41 +450,44 @@ public class InfinispanClientImpl implements InfinispanClient {
      */
     private MBeanServerConnection createConnection(InfinispanMachine machine) throws NoJmxProtocolRegisterException,
             ConnectionException {
-
-        if( mBeanServerConnection == null ){
-            Map<String, Object> environment = new HashMap<String, Object>();
-            if (machine.getUsername() != null && !machine.getUsername().isEmpty()) {
-                environment.put(JMXConnector.CREDENTIALS, new String[]{machine.getUsername(), machine.getPassword()});
-            }
-            synchronized (protocols) {
-                if (protocols.isEmpty()) {
-                    throw new NoJmxProtocolRegisterException();
+        synchronized (machine2connection) {
+            MBeanServerConnection mBeanServerConnection = machine2connection.get(machine);
+            if(mBeanServerConnection == null ){
+                Map<String, Object> environment = new HashMap<String, Object>();
+                if (machine.getUsername() != null && !machine.getUsername().isEmpty()) {
+                    environment.put(JMXConnector.CREDENTIALS, new String[]{machine.getUsername(), machine.getPassword()});
                 }
-
-                JMXConnector jmxConnector;
-
-                for (JmxProtocol jmxProtocol : protocols) {
-                    log.debug("trying to connect to " + machine + " using " + jmxProtocol);
-                    try {
-                        jmxConnector = JMXConnectorFactory.connect(jmxProtocol.createUrl( machine.getIp(),
-                                String.valueOf(machine.getPort()) ), environment);
-                    } catch (IOException e) {
-                        log.debug("error trying to connect to " + machine + " using " + jmxProtocol, e);
-                        continue;
+                synchronized (protocols) {
+                    if (protocols.isEmpty()) {
+                        throw new NoJmxProtocolRegisterException();
                     }
-                    try {
-                        mBeanServerConnection = jmxConnector.getMBeanServerConnection();
-                        break;
-                    } catch (IOException e) {
-                        log.debug("error trying to connect to " + machine + " using " + jmxProtocol, e);
+
+                    JMXConnector jmxConnector;
+
+                    for (JmxProtocol jmxProtocol : protocols) {
+                        log.debug("trying to connect to " + machine + " using " + jmxProtocol);
+                        try {
+                            jmxConnector = JMXConnectorFactory.connect(jmxProtocol.createUrl( machine.getIp(),
+                                    String.valueOf(machine.getPort()) ), environment);
+                        } catch (IOException e) {
+                            log.debug("error trying to connect to " + machine + " using " + jmxProtocol, e);
+                            continue;
+                        }
+                        try {
+                            mBeanServerConnection = jmxConnector.getMBeanServerConnection();
+                            break;
+                        } catch (IOException e) {
+                            log.debug("error trying to connect to " + machine + " using " + jmxProtocol, e);
+                        }
                     }
                 }
+                if (mBeanServerConnection == null) {
+                    throw new ConnectionException("Cannot Connect to " + machine);
+                }
+                machine2connection.put(machine, mBeanServerConnection);
             }
-            if (mBeanServerConnection == null) {
-                throw new ConnectionException("Cannot Connect to " + machine);
-            }
+            return mBeanServerConnection;
         }
-        return mBeanServerConnection;
     }
 
     /**
@@ -526,6 +535,53 @@ public class InfinispanClientImpl implements InfinispanClient {
         throw new ComponentNotFoundException(infinispanDomain, cacheName, component);
     }
 
+
+    /**
+     * tries to find the cache component defined by {@param infinispanDomain}, {@param cacheName} and {@param component}
+     *
+     * @param connection       the {@link MBeanServerConnection} in which it tries to find the {@link ObjectName}
+     * @param infinispanDomain the Infinispan JMX domain, like it is registered in Infinispan configuration file
+     * @param component        the component name
+     * @return the {@link ObjectName} that represents the component
+     * @throws ComponentNotFoundException if the component was not found in this connection
+     * @throws ConnectionException        if a connection error occurs while trying to find the component
+     */
+    private ObjectName findGlobalComponent(MBeanServerConnection connection, String infinispanDomain,
+                                           String component) throws ComponentNotFoundException, ConnectionException {
+        if (log.isDebugEnabled()) {
+            log.debug("Trying to find the component defined by: " + infinispanDomain + ":" + cacheName + "." +
+                    component);
+        }
+        try {
+            for (ObjectName name : connection.queryNames(null, null)) {
+                if (log.isTraceEnabled()) {
+                    log.trace("[" + infinispanDomain + ":" + cacheName + "." + component + "] Checking ObjectName " +
+                            name);
+                }
+                if (name.getDomain().equals(infinispanDomain)) {
+                    if ("CacheManager".equals(name.getKeyProperty("type")) && ObjectName.quote("DefaultCacheManager").equals(name.getKeyProperty("name")) &&
+                            component.equals(name.getKeyProperty("component"))) {
+                        if (log.isDebugEnabled()) {
+                            log.debug("[" + infinispanDomain + ":" + cacheName + "." + component +
+                                    "] ObjectName found: " + name);
+                        }
+                        return name;
+                    }
+                }
+            }
+        } catch (IOException e) {
+            log.warn("[" + infinispanDomain + ":" + cacheName + "." + component + "] an error occurs", e);
+            throw new ConnectionException(e);
+        }
+        if (log.isDebugEnabled()) {
+            log.debug("[" + infinispanDomain + ":" + cacheName + "." + component +
+                    "] No ObjectName found");
+        }
+        throw new ComponentNotFoundException(infinispanDomain, cacheName, component);
+    }
+
+
+
     private ObjectName findFenixFrameworkWorker(MBeanServerConnection connection, String fenixFrameworkDomain,
                                                 String applicationName)
             throws ComponentNotFoundException, ConnectionException {
@@ -567,13 +623,22 @@ public class InfinispanClientImpl implements InfinispanClient {
     /* ************************* */
 
     @Override
-    public void triggerBlockingSwitchReplicationDegree(int replicationDegree) throws InvocationException, NoJmxProtocolRegisterException {
+    public void triggerBlockingSwitchReplicationDegree(int degreeToApply) throws InvocationException, NoJmxProtocolRegisterException {
+
         // 1. retrieve coordinator
         InfinispanMachine coordinator = retrieveCoordinator();
 
+        // 1.a ask current rep degree
+        Long currRepDegree = (Long) getAttributeInMachine(coordinator, "ExtendedStatistics", "replicationDegree");
+
+        if( currRepDegree == degreeToApply ) {
+            log.info("Already using replication degree " + currRepDegree);
+            return;
+        }
+
         // 2. execute switchTo, it returns currentRoundId + 1
         Long currentRoundId = (Long) invokeInMachine(coordinator, "DataPlacementManager", "setReplicationDegree",
-                new Object[]{replicationDegree}, new String[]{"int"});
+                new Object[]{degreeToApply}, new String[]{"int"});
 
         // 3. Spin while all the nodes are on the same roundId && !roundInProgress
         Set<InfinispanMachine> changingSet = new HashSet(machines);
@@ -616,18 +681,34 @@ public class InfinispanClientImpl implements InfinispanClient {
             }
         }
 
+        if(maxRetries<=0){
+            log.warn("WARNING number of retries exceeded! I should throw an exception...");
+        }
+
     }
 
     @Override
-    public void triggerBlockingSwitchReplicationProtocol(String protocolId, boolean forceStop, boolean abortOnStop)
+    public void triggerBlockingSwitchReplicationProtocol(String protocolIdToApply, boolean forceStop, boolean abortOnStop)
             throws InvocationException, NoJmxProtocolRegisterException {
 
         // 1. retrieve coordinator
         InfinispanMachine coordinator = retrieveCoordinator();
 
+        // 1.a ask current rep protocol
+        String currProtocolId = (String) getAttributeInMachine(
+                coordinator,
+                "ReconfigurableReplicationManager",
+                "currentProtocolId"
+        );
+
+        if( currProtocolId.equals(protocolIdToApply) ) {
+            log.info("Already using replication protocol " + currProtocolId);
+            return;
+        }
+
         // 2. execute switchTo, it returns currentEpoch + 1
         Long currentEpoch = (Long) invokeInMachine(coordinator, "ReconfigurableReplicationManager", "switchTo",
-                new Object[]{protocolId, forceStop, abortOnStop},
+                new Object[]{protocolIdToApply, forceStop, abortOnStop},
                 new String[]{"java.lang.String", "boolean", "boolean"});
 
         // 3. Spin while all the nodes are on the same epoch &&
@@ -668,7 +749,26 @@ public class InfinispanClientImpl implements InfinispanClient {
             }
         }
 
+        if(maxRetries<=0){
+            log.warn("WARNING number of retries exceeded! I should throw an exception...");
+        }
     }
+
+
+
+    @Override
+    public void triggerRebalancing(boolean enabled) throws InvocationException, NoJmxProtocolRegisterException {
+
+
+
+        invokeOnceInAnyMachine("LocalTopologyManager",
+                "setRebalancingEnabled",
+                new Object[]{enabled},
+                new String[]{"boolean"},
+                true);
+
+    }
+
 
     @Override
     public void triggerBlockingDataPlacement() {
@@ -676,7 +776,7 @@ public class InfinispanClientImpl implements InfinispanClient {
     }
 
     private InfinispanMachine retrieveCoordinator() throws InvocationException, NoJmxProtocolRegisterException {
-        String hostname = (String) invokeOnceInAnyMachine("DataPlacementManager", "getCoordinatorHostName", EMPTY_PARAMETER, EMPTY_SIGNATURE);
+        String hostname = (String) invokeOnceInAnyMachine("DataPlacementManager", "getCoordinatorHostName", EMPTY_PARAMETER, EMPTY_SIGNATURE, false);
         InfinispanMachine coordinator = hostname2machine(hostname);
 
         log.info("Coordinator: [ hostname: " + coordinator.getHostname() + ", ip: " + coordinator.getIp() + " ]");
