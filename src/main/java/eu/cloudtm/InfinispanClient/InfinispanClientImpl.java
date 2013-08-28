@@ -22,10 +22,7 @@
  */
 package eu.cloudtm.InfinispanClient;
 
-import eu.cloudtm.InfinispanClient.exception.ComponentNotFoundException;
-import eu.cloudtm.InfinispanClient.exception.ConnectionException;
-import eu.cloudtm.InfinispanClient.exception.InvocationException;
-import eu.cloudtm.InfinispanClient.exception.NoJmxProtocolRegisterException;
+import eu.cloudtm.InfinispanClient.exception.*;
 import eu.cloudtm.InfinispanClient.jmxprotocol.JmxProtocol;
 import eu.cloudtm.InfinispanClient.jmxprotocol.JmxRMIProtocol;
 import org.apache.log4j.Logger;
@@ -99,7 +96,7 @@ public class InfinispanClientImpl implements InfinispanClient {
      *
      * @param hostname the hostname machine
      */
-    private final InfinispanMachine hostname2machine(String hostname) {
+    private final InfinispanMachine hostname2machine(String hostname) throws HostnameNotFoundException {
         if(hostname == null)
             throw new NullPointerException("hostname cannot be null");
 
@@ -113,7 +110,7 @@ public class InfinispanClientImpl implements InfinispanClient {
             }
         }
         if(ret == null){
-            throw new RuntimeException("Hostname " + hostname + " doesn't belong to any machine!!" );
+            throw new HostnameNotFoundException("Hostname " + hostname + " doesn't belong to any machine!!" );
         }
         return ret;
     }
@@ -777,7 +774,22 @@ public class InfinispanClientImpl implements InfinispanClient {
 
     private InfinispanMachine retrieveCoordinator() throws InvocationException, NoJmxProtocolRegisterException {
         String hostname = (String) invokeOnceInAnyMachine("DataPlacementManager", "getCoordinatorHostName", EMPTY_PARAMETER, EMPTY_SIGNATURE, false);
-        InfinispanMachine coordinator = hostname2machine(hostname);
+        InfinispanMachine coordinator = null;
+
+        boolean coordinatorFound = false;
+        /**
+         * Adding this lopp because while scaling down several times, the coordinator could change quickly...
+         * and some slave could not be update.
+         */
+        while(!coordinatorFound){
+            try {
+                coordinator = hostname2machine(hostname);
+                coordinatorFound = true;
+            } catch (HostnameNotFoundException e) {
+                coordinatorFound = false;
+                log.trace(e);
+            }
+        }
 
         log.info("Coordinator: [ hostname: " + coordinator.getHostname() + ", ip: " + coordinator.getIp() + " ]");
         return coordinator;
