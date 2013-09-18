@@ -15,7 +15,7 @@ public class ConfigurationFactory {
    public static IspnActuatorConfiguration getInstance() {
       if (instance == null) {
          try {
-            instance = new IspnActuatorConfiguration("config/infinispan-actuator/config.properties");
+            instance = new IspnActuatorConfiguration("config/infinispan_actuator.properties");
          } catch (ConfigurationException e) {
             throw new RuntimeException(e);
          }
