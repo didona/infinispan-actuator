@@ -77,5 +77,13 @@
             <artifactId>log4j</artifactId>
             <version>${version.log4j}</version>
         </dependency>
+
+        <dependency>
+            <groupId>commons-configuration</groupId>
+            <artifactId>commons-configuration</artifactId>
+            <version>1.9</version>
+        </dependency>
     </dependencies>
+
+
 </project>
