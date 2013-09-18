@@ -16,14 +16,18 @@ public class IspnActuatorConfiguration extends PropertiesConfiguration {
       super(fileName);
    }
 
-   public boolean useJboss() {
-      return getString(KEYS.USE_JBOSS.key).equals("true");
+   public boolean useRemoting() {
+      return getString(KEYS.USE_REMOTING.key).equals("true");
+   }
+   public boolean useRMI(){
+      return getString(KEYS.USE_RMI.key).equals("true");
    }
 
 
    private enum KEYS {
 
-      USE_JBOSS("use_jboss");
+      USE_REMOTING("use_remoting"),
+      USE_RMI("use_rmi");
 
       private final String key;
 
