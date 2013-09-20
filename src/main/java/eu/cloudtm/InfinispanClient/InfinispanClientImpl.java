@@ -789,7 +789,12 @@ public class InfinispanClientImpl implements InfinispanClient {
    }
 
    private InfinispanMachine retrieveCoordinator() throws InvocationException, NoJmxProtocolRegisterException {
+      final boolean trace = log.isTraceEnabled();
+      if (trace)
+         log.trace("Going to retrieve the coordinator");
       String hostname = (String) invokeOnceInAnyMachine("DataPlacementManager", "getCoordinatorHostName", EMPTY_PARAMETER, EMPTY_SIGNATURE, false);
+      if (trace)
+         log.trace("The coordinator is " + hostname);
       InfinispanMachine coordinator = null;
 
       boolean coordinatorFound = false;
