@@ -139,6 +139,25 @@ public class InfinispanClientImpl implements InfinispanClient {
       }
    }
 
+
+
+   public InfinispanClientImpl(Set<InfinispanMachine> infinispanMachines,
+                               String infinispanDomain, String cacheName
+   ) {
+      this.machines = new HashSet<InfinispanMachine>(infinispanMachines);
+      this.infinispanDomain = infinispanDomain;
+      this.cacheName = cacheName;
+      this.cacheManagerName = ConfigurationFactory.getInstance().getInfinispanCacheManagerName();
+
+      this.infinispanObjectNameFinder = new InfinispanObjectNameFinder(infinispanDomain, cacheName, cacheManagerName);
+      InfinsipanActuatorConfig config = ConfigurationFactory.getInstance();
+      if (config.getFenixDomain() == null)
+         this.fenixObjectNameFinder = null;
+      else {
+         this.fenixObjectNameFinder = new FenixObjectNameFinder(config.getFenixDomain(), config.getFenixAppName());
+      }
+   }
+
    /**
     * Create an instance with everything file injected
     *
@@ -882,7 +901,6 @@ public class InfinispanClientImpl implements InfinispanClient {
       // 3. Spin while all the nodes are on the same epoch
       log.trace("Now ensuring protocol switch has completed successfully");
       ensureProtocolSwitched(currentEpoch);
-
 
 
    }
