@@ -29,9 +29,9 @@ import eu.cloudtm.InfinispanClient.exception.ConnectionException;
 import eu.cloudtm.InfinispanClient.exception.HostnameNotFoundException;
 import eu.cloudtm.InfinispanClient.exception.InvocationException;
 import eu.cloudtm.InfinispanClient.exception.NoJmxProtocolRegisterException;
-import eu.cloudtm.InfinispanClient.jmxprotocol.JmxProtocol;
-import eu.cloudtm.InfinispanClient.jmxprotocol.JmxRMIProtocol;
-import eu.cloudtm.InfinispanClient.jmxprotocol.RemotingJmxProtocol;
+import eu.cloudtm.InfinispanClient.jmxprotocol.protocol.JmxProtocol;
+import eu.cloudtm.InfinispanClient.jmxprotocol.protocol.JmxRMIProtocol;
+import eu.cloudtm.InfinispanClient.jmxprotocol.protocol.RemotingJmxProtocol;
 import org.apache.log4j.Logger;
 
 import javax.management.AttributeNotFoundException;
@@ -722,16 +722,19 @@ public class InfinispanClientImpl implements InfinispanClient {
       }
 
       // 2. execute switchTo, it returns currentEpoch + 1
+      log.trace("Invoking switchTo on ispn coordinator");
       Long currentEpoch = (Long) invokeInMachine(coordinator, "ReconfigurableReplicationManager", "switchTo",
                                                  new Object[]{protocolIdToApply, forceStop, abortOnStop},
                                                  new String[]{"java.lang.String", "boolean", "boolean"});
+      log.trace("Invoking switchTo on LARD");
+      invokeInMachine(coordinator, "Worker","setProtocol", new Object[]{protocolIdToApply},new String[]{String.class.getName()});
 
       // 3. Spin while all the nodes are on the same epoch &&
       Set<InfinispanMachine> changingSet = new HashSet(machines);
 
       boolean awake = false;
       int maxRetries = MAX_RETRIES;
-
+      log.trace("Going to wait until all replica are aligned with epoch...");
       while (!changingSet.isEmpty() && !awake && maxRetries > 0) {
          Map<InfinispanMachine, Object> machine2epoch =
                getAttributeInAllMachine("ReconfigurableReplicationManager", "currentEpoch");
@@ -750,7 +753,11 @@ public class InfinispanClientImpl implements InfinispanClient {
                                                                        "ReconfigurableReplicationManager", "currentState");
                   if (currentState.equals("SAFE")) {
                      changingSet.remove(currentMachine);
+                  } else {
+                     log.trace("Machine " + entry.getKey().getIp() + " is aligned with epoch " + currentEpoch + " but the state is not safe yet");
                   }
+               } else {
+                  log.trace("Machine " + entry.getKey().getIp() + " is not aligned with epoch: its is " + epochForCurrentMachine + " but the current is " + currentEpoch);
                }
             }
          }
@@ -767,6 +774,10 @@ public class InfinispanClientImpl implements InfinispanClient {
       if (maxRetries <= 0) {
          log.warn("WARNING number of retries exceeded! I should throw an exception...");
       }
+
+      log.trace("All ispn instances are aligned. Now going to change LARD");
+
+
    }
 
 

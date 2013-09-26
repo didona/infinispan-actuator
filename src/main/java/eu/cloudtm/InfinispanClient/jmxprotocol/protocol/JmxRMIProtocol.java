@@ -20,9 +20,10 @@
  * Software Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA
  * 02110-1301 USA, or see the FSF site: http://www.fsf.org.
  */
-package eu.cloudtm.InfinispanClient.jmxprotocol;
+package eu.cloudtm.InfinispanClient.jmxprotocol.protocol;
 
 import javax.management.remote.JMXServiceURL;
+import java.net.MalformedURLException;
 
 /**
  * // TODO: Document this
@@ -30,8 +31,15 @@ import javax.management.remote.JMXServiceURL;
  * @author Pedro Ruivo
  * @since 1.0
  */
-public interface JmxProtocol {
+public class JmxRMIProtocol implements JmxProtocol {
 
-    JMXServiceURL createUrl(String hostname, String port);
+    @Override
+    public JMXServiceURL createUrl(String hostname, String port) {
+        try {
+            return new JMXServiceURL(String.format("service:jmx:rmi:///jndi/rmi://%s:%s/jmxrmi", hostname, port));
+        } catch (MalformedURLException e) {
+            throw new IllegalStateException("Should never happen!");
+        }
 
+    }
 }

@@ -1,12 +1,10 @@
 package eu.cloudtm.InfinispanClient;
 
-import eu.cloudtm.InfinispanClient.InfinispanClientImpl;
-import eu.cloudtm.InfinispanClient.InfinispanMachine;
 import eu.cloudtm.InfinispanClient.exception.InvocationException;
 import eu.cloudtm.InfinispanClient.exception.NoJmxProtocolRegisterException;
-import eu.cloudtm.InfinispanClient.jmxprotocol.JmxProtocol;
-import eu.cloudtm.InfinispanClient.jmxprotocol.JmxRMIProtocol;
-import eu.cloudtm.InfinispanClient.jmxprotocol.RemotingJmxProtocol;
+import eu.cloudtm.InfinispanClient.jmxprotocol.protocol.JmxProtocol;
+import eu.cloudtm.InfinispanClient.jmxprotocol.protocol.JmxRMIProtocol;
+import eu.cloudtm.InfinispanClient.jmxprotocol.protocol.RemotingJmxProtocol;
 import org.apache.log4j.Logger;
 
 import java.util.HashSet;
