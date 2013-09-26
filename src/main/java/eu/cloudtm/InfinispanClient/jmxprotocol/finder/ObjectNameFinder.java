@@ -16,7 +16,7 @@ public abstract class ObjectNameFinder {
 
    protected abstract Logger getLog();
 
-   public final Set<ObjectName> find(MBeanServerConnection connection, ObjectName query) {
+   protected final Set<ObjectName> find(MBeanServerConnection connection, ObjectName query) {
       getLog().debug("Querying " + query + " using as connection " + connection);
       if (connection == null) {
          return Collections.emptySet();

@@ -32,7 +32,7 @@ public class Test {
         System.out.println("Adding infinispan instances...");
         machines.add( new InfinispanMachine("localhost", 9998, "127.0.0.1") );
 
-        InfinispanClientImpl actuator = new InfinispanClientImpl(machines, "org.infinispan", "x(dist_sync)");
+        InfinispanClientImpl actuator = new InfinispanClientImpl(machines, "org.infinispan", "x(dist_sync)","DefaultCacheManager");
 
         try {
             System.out.println("Switching rep protocol...");

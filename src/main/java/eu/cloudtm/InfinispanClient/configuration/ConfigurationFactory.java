@@ -6,7 +6,7 @@ import org.apache.commons.configuration.ConfigurationException;
 /**
  * // TODO: Document this
  *
- * @author diego
+ * @author Diego Didona
  * @since 4.0
  */
 public class ConfigurationFactory {

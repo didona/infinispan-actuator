@@ -7,7 +7,7 @@ import org.apache.commons.configuration.PropertiesConfiguration;
 /**
  * // TODO: Document this
  *
- * @author diego
+ * @author Diego Didona
  * @since 4.0
  */
 public class InfinsipanActuatorConfig extends PropertiesConfiguration {

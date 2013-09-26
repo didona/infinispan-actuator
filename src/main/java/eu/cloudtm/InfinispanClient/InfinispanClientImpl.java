@@ -58,6 +58,7 @@ import java.util.Set;
  *
  * @author Pedro Ruivo
  * @author Fabio Perfetti
+ * @author Diego Didona
  * @since 1.0
  */
 public class InfinispanClientImpl implements InfinispanClient {
@@ -157,6 +158,7 @@ public class InfinispanClientImpl implements InfinispanClient {
 
    /**
     * Create an instance with all specified params
+    *
     * @param infinispanMachines
     * @param infinispanDomain
     * @param cacheName
@@ -237,6 +239,8 @@ public class InfinispanClientImpl implements InfinispanClient {
                                                       String fenixFrameworkDomain, String applicationName,
                                                       String protocolId, boolean forceStop, boolean abortOnStop)
          throws NoJmxProtocolRegisterException, InvocationException {
+
+      log.trace("Triggering switch replication protocol without contacting the primary first");
       invokeOnWorkerOnceInAnyMachine(fenixFrameworkDomain, applicationName, "setProtocol",
                                      new Object[]{protocolId}, new String[]{"String"});
       invokeOnceInAnyMachine("ReconfigurableReplicationManager",
@@ -447,6 +451,35 @@ public class InfinispanClientImpl implements InfinispanClient {
 
       return retVal;
    }
+
+   private void changeProtocolOnFenixIfNeeded(InfinispanMachine machine, String protocol) throws NoJmxProtocolRegisterException, InvocationException {
+      if (fenixObjectNameFinder == null) {
+         log.trace("Not going to change protocol in Fénix");
+         return;
+      }
+      log.trace("Invoking switchTo on LARD");
+      log.debug("Setting protocol to " + protocol + " in " + machine.getHostname() + "(" + machine.getPort() + ")");
+      MBeanServerConnection connection = null;
+      try {
+         connection = createConnection(machine);
+      } catch (ConnectionException e) {
+         log.error("It was impossible to establish a connection with " + machine);
+      }
+      Set<ObjectName> fenixObjectNameSet = fenixObjectNameFinder.findFenixComponent(connection, "Worker");
+      log.debug("Fenix found: " + fenixObjectNameSet);
+      if (fenixObjectNameSet.isEmpty()) {
+         return;
+      }
+      final ObjectName workerObjectName = fenixObjectNameSet.iterator().next();
+      final Object[] params = new Object[]{protocol};
+      final String[] signature = new String[]{String.class.getName()};
+      try {
+         connection.invoke(workerObjectName, "setProtocol", params, signature);
+      } catch (Exception e) {
+         log.error("Error setting protocol in " + machine.getHostname() + "(" + machine.getPort() + ")", e);
+      }
+   }
+
 
    public final Object invokeOnWorkerOnceInAnyMachine(String fenixFrameworkDomain, String applicationName,
                                                       String methodName, Object[] parameter, String[] signature)
@@ -767,12 +800,8 @@ public class InfinispanClientImpl implements InfinispanClient {
 
    }
 
-   @Override
-   public void triggerBlockingSwitchReplicationProtocol(String protocolIdToApply, boolean forceStop, boolean abortOnStop)
-         throws InvocationException, NoJmxProtocolRegisterException {
+   private Long changeProtocolOn(InfinispanMachine coordinator, String protocolIdToApply, boolean forceStop, boolean abortOnStop) throws InvocationException, NoJmxProtocolRegisterException {
 
-      // 1. retrieve coordinator
-      InfinispanMachine coordinator = retrieveCoordinator();
 
       // 1.a ask current rep protocol
       String currProtocolId = (String) getAttributeInMachine(
@@ -783,18 +812,17 @@ public class InfinispanClientImpl implements InfinispanClient {
 
       if (currProtocolId.equals(protocolIdToApply)) {
          log.info("Already using replication protocol " + currProtocolId);
-         return;
+         return null;
       }
 
       // 2. execute switchTo, it returns currentEpoch + 1
       log.trace("Invoking switchTo on ispn coordinator");
-      Long currentEpoch = (Long) invokeInMachine(coordinator, "ReconfigurableReplicationManager", "switchTo",
-                                                 new Object[]{protocolIdToApply, forceStop, abortOnStop},
-                                                 new String[]{"java.lang.String", "boolean", "boolean"});
-      log.trace("Invoking switchTo on LARD");
-      invokeInMachine(coordinator, "Worker", "setProtocol", new Object[]{protocolIdToApply}, new String[]{String.class.getName()});
+      return (Long) invokeInMachine(coordinator, "ReconfigurableReplicationManager", "switchTo",
+                                    new Object[]{protocolIdToApply, forceStop, abortOnStop},
+                                    new String[]{"java.lang.String", "boolean", "boolean"});
+   }
 
-      // 3. Spin while all the nodes are on the same epoch &&
+   private void ensureProtocolSwitched(long currentEpoch) throws NoJmxProtocolRegisterException, InvocationException {
       Set<InfinispanMachine> changingSet = new HashSet(machines);
 
       boolean awake = false;
@@ -840,7 +868,21 @@ public class InfinispanClientImpl implements InfinispanClient {
          log.warn("WARNING number of retries exceeded! I should throw an exception...");
       }
 
-      log.trace("All ispn instances are aligned. Now going to change LARD");
+
+   }
+
+   @Override
+   public void triggerBlockingSwitchReplicationProtocol(String protocolIdToApply, boolean forceStop, boolean abortOnStop) throws InvocationException, NoJmxProtocolRegisterException {
+      // 1. retrieve coordinator
+      InfinispanMachine coordinator = retrieveCoordinator();
+      log.trace("Invoking protocol switching on coordinator " + coordinator);
+      Long currentEpoch = changeProtocolOn(coordinator, protocolIdToApply, forceStop, abortOnStop);
+      //2. Change protocol also on lard, if necessary
+      changeProtocolOnFenixIfNeeded(coordinator, protocolIdToApply);
+      // 3. Spin while all the nodes are on the same epoch
+      log.trace("Now ensuring protocol switch has completed successfully");
+      ensureProtocolSwitched(currentEpoch);
+
 
 
    }
