@@ -25,7 +25,12 @@ public class FenixObjectNameFinder extends ObjectNameFinder {
         this.appName = properties.getProperty("fenix.appName");
     }
 
-    public synchronized final Set<ObjectName> findFenixComponent(MBeanServerConnection connection, String component) {
+   public FenixObjectNameFinder(String jmxDomain, String appName) {
+      this.jmxDomain = jmxDomain;
+      this.appName = appName;
+   }
+
+   public synchronized final Set<ObjectName> findFenixComponent(MBeanServerConnection connection, String component) {
         return find(connection, createQuery(component));
     }
 

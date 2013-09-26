@@ -10,12 +10,12 @@ import org.apache.commons.configuration.ConfigurationException;
  * @since 4.0
  */
 public class ConfigurationFactory {
-   private static IspnActuatorConfiguration instance;
+   private static InfinsipanActuatorConfig instance;
 
-   public static IspnActuatorConfiguration getInstance() {
+   public static InfinsipanActuatorConfig getInstance() {
       if (instance == null) {
          try {
-            instance = new IspnActuatorConfiguration("config/infinispan_actuator.properties");
+            instance = new InfinsipanActuatorConfig("config/infinispan_actuator.properties");
          } catch (ConfigurationException e) {
             throw new RuntimeException(e);
          }

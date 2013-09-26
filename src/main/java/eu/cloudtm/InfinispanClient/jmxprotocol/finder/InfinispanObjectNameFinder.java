@@ -23,7 +23,13 @@ public class InfinispanObjectNameFinder extends ObjectNameFinder {
     private String cacheManager;
     private String cacheName;
 
-    public synchronized void update(Properties properties) {
+   public InfinispanObjectNameFinder(String jmxDomain, String cacheManager, String cacheName) {
+      this.jmxDomain = jmxDomain;
+      this.cacheManager = cacheManager;
+      this.cacheName = cacheName;
+   }
+
+   public synchronized void update(Properties properties) {
         this.jmxDomain = properties.getProperty("infinispan.jmxDomain");
         this.cacheManager = properties.getProperty("infinispan.cacheManager");
         this.cacheName = properties.getProperty("infinispan.cacheName");

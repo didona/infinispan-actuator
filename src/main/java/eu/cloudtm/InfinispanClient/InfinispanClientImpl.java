@@ -23,12 +23,14 @@
 package eu.cloudtm.InfinispanClient;
 
 import eu.cloudtm.InfinispanClient.configuration.ConfigurationFactory;
-import eu.cloudtm.InfinispanClient.configuration.IspnActuatorConfiguration;
+import eu.cloudtm.InfinispanClient.configuration.InfinsipanActuatorConfig;
 import eu.cloudtm.InfinispanClient.exception.ComponentNotFoundException;
 import eu.cloudtm.InfinispanClient.exception.ConnectionException;
 import eu.cloudtm.InfinispanClient.exception.HostnameNotFoundException;
 import eu.cloudtm.InfinispanClient.exception.InvocationException;
 import eu.cloudtm.InfinispanClient.exception.NoJmxProtocolRegisterException;
+import eu.cloudtm.InfinispanClient.jmxprotocol.finder.FenixObjectNameFinder;
+import eu.cloudtm.InfinispanClient.jmxprotocol.finder.InfinispanObjectNameFinder;
 import eu.cloudtm.InfinispanClient.jmxprotocol.protocol.JmxProtocol;
 import eu.cloudtm.InfinispanClient.jmxprotocol.protocol.JmxRMIProtocol;
 import eu.cloudtm.InfinispanClient.jmxprotocol.protocol.RemotingJmxProtocol;
@@ -67,6 +69,7 @@ public class InfinispanClientImpl implements InfinispanClient {
 
    private final String infinispanDomain;
    private final String cacheName;
+   private final String cacheManagerName;
 
 
    private final Map<InfinispanMachine, MBeanServerConnection> machine2connection = new HashMap<InfinispanMachine, MBeanServerConnection>();
@@ -90,8 +93,12 @@ public class InfinispanClientImpl implements InfinispanClient {
     */
    public static final String[] EMPTY_SIGNATURE = new String[0];
 
+
+   private final InfinispanObjectNameFinder infinispanObjectNameFinder;
+   private final FenixObjectNameFinder fenixObjectNameFinder;
+
    private final Set<JmxProtocol> protocols = new HashSet<JmxProtocol>() {{
-      IspnActuatorConfiguration config = ConfigurationFactory.getInstance();
+      InfinsipanActuatorConfig config = ConfigurationFactory.getInstance();
       final boolean trace = log.isTraceEnabled();
       if (config.useRMI()) {
          if (trace) log.trace("Activating RMI protocol for Infinispan Actuator");
@@ -106,13 +113,71 @@ public class InfinispanClientImpl implements InfinispanClient {
 
    private final Set<InfinispanMachine> machines;
 
+   /**
+    * Create an instance with given ispn information and file-injected fenix information
+    *
+    * @param infinispanMachines
+    * @param infinispanDomain
+    * @param cacheName
+    * @param cacheManagerName
+    */
    public InfinispanClientImpl(Set<InfinispanMachine> infinispanMachines,
-                               String infinispanDomain, String cacheName
+                               String infinispanDomain, String cacheName, String cacheManagerName
    ) {
       this.machines = new HashSet<InfinispanMachine>(infinispanMachines);
       this.infinispanDomain = infinispanDomain;
       this.cacheName = cacheName;
+      this.cacheManagerName = cacheManagerName;
+
+      this.infinispanObjectNameFinder = new InfinispanObjectNameFinder(infinispanDomain, cacheName, cacheManagerName);
+      InfinsipanActuatorConfig config = ConfigurationFactory.getInstance();
+      if (config.getFenixDomain() == null)
+         this.fenixObjectNameFinder = null;
+      else {
+         this.fenixObjectNameFinder = new FenixObjectNameFinder(config.getFenixDomain(), config.getFenixAppName());
+      }
    }
+
+   /**
+    * Create an instance with everything file injected
+    *
+    * @param infinispanMachines
+    */
+   public InfinispanClientImpl(Set<InfinispanMachine> infinispanMachines) {
+      this.machines = new HashSet<InfinispanMachine>(infinispanMachines);
+      InfinsipanActuatorConfig config = ConfigurationFactory.getInstance();
+
+      this.infinispanDomain = config.getInfinispanDomain();
+      this.cacheName = config.getInfinispanCacheName();
+      this.cacheManagerName = config.getInfinispanCacheManagerName();
+
+      this.infinispanObjectNameFinder = new InfinispanObjectNameFinder(infinispanDomain, cacheName, cacheManagerName);
+      this.fenixObjectNameFinder = new FenixObjectNameFinder(config.getFenixDomain(), config.getFenixAppName());
+   }
+
+   /**
+    * Create an instance with all specified params
+    * @param infinispanMachines
+    * @param infinispanDomain
+    * @param cacheName
+    * @param cacheManagerName
+    * @param fenixJmxDomain
+    * @param fenixAppName
+    */
+   public InfinispanClientImpl(Set<InfinispanMachine> infinispanMachines,
+                               String infinispanDomain, String cacheName, String cacheManagerName, String fenixJmxDomain, String fenixAppName
+   ) {
+      this.machines = new HashSet<InfinispanMachine>(infinispanMachines);
+      this.infinispanDomain = infinispanDomain;
+      this.cacheName = cacheName;
+      this.cacheManagerName = cacheManagerName;
+
+      this.infinispanObjectNameFinder = new InfinispanObjectNameFinder(infinispanDomain, cacheName, cacheManagerName);
+
+      this.fenixObjectNameFinder = new FenixObjectNameFinder(fenixJmxDomain, fenixAppName);
+
+   }
+
 
    /**
     * return a {@link InfinispanMachine} with the given hostname.
@@ -727,7 +792,7 @@ public class InfinispanClientImpl implements InfinispanClient {
                                                  new Object[]{protocolIdToApply, forceStop, abortOnStop},
                                                  new String[]{"java.lang.String", "boolean", "boolean"});
       log.trace("Invoking switchTo on LARD");
-      invokeInMachine(coordinator, "Worker","setProtocol", new Object[]{protocolIdToApply},new String[]{String.class.getName()});
+      invokeInMachine(coordinator, "Worker", "setProtocol", new Object[]{protocolIdToApply}, new String[]{String.class.getName()});
 
       // 3. Spin while all the nodes are on the same epoch &&
       Set<InfinispanMachine> changingSet = new HashSet(machines);
