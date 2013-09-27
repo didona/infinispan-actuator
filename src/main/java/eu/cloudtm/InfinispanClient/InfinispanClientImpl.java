@@ -140,7 +140,6 @@ public class InfinispanClientImpl implements InfinispanClient {
    }
 
 
-
    public InfinispanClientImpl(Set<InfinispanMachine> infinispanMachines,
                                String infinispanDomain, String cacheName
    ) {
@@ -172,7 +171,7 @@ public class InfinispanClientImpl implements InfinispanClient {
       this.cacheManagerName = config.getInfinispanCacheManagerName();
 
       this.infinispanObjectNameFinder = new InfinispanObjectNameFinder(infinispanDomain, cacheName, cacheManagerName);
-      if(config.isFenixActive())
+      if (config.isFenixActive())
          this.fenixObjectNameFinder = new FenixObjectNameFinder(config.getFenixDomain(), config.getFenixAppName());
       else
          this.fenixObjectNameFinder = null;
@@ -953,6 +952,32 @@ public class InfinispanClientImpl implements InfinispanClient {
 
       log.info("Coordinator: [ hostname: " + coordinator.getHostname() + ", ip: " + coordinator.getIp() + " ]");
       return coordinator;
+   }
+
+
+   public final void triggerDataPlacement() throws NoJmxProtocolRegisterException, ConnectionException {
+      MBeanServerConnection connection;
+      Set<ObjectName> ispnObjectNameSet;
+      ObjectName dataPlacementObjectName;
+      for (InfinispanMachine machine : machines) {
+         connection = createConnection(machine);
+         log.debug("Triggering data placement in " + machine.getIp() + "(" + machine.getPort() + ")");
+         ispnObjectNameSet = infinispanObjectNameFinder.findCacheComponent(connection, "DataPlacementManager");
+         if (ispnObjectNameSet.isEmpty()) {
+            log.debug("No ObjectName found searching for DataPlacementManager");
+            return;
+         }
+         log.debug("Found: " + ispnObjectNameSet);
+         dataPlacementObjectName = ispnObjectNameSet.iterator().next();
+         try {
+            connection.invoke(dataPlacementObjectName, "dataPlacementRequest", EMPTY_PARAMETER, EMPTY_SIGNATURE);
+            log.debug("Data placement successfully triggered on " + machine.getIp() + "(" + machine.getPort() + ")");
+         } catch (Exception e) {
+            log.error("Error triggering dataplacement on " + machine.getIp() + "(" + machine.getPort() + ")", e);
+         }
+      }
+
+
    }
 
 
