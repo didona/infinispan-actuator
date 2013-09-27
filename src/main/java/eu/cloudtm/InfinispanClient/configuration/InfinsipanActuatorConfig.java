@@ -44,6 +44,10 @@ public class InfinsipanActuatorConfig extends PropertiesConfiguration {
       return getString(KEYS.ISPN_CACHEMANAGER.key);
    }
 
+   public boolean isFenixActive() {
+      return getBoolean(KEYS.FENIX_ACTIVE.key);
+   }
+
 
    private enum KEYS {
 
@@ -53,7 +57,8 @@ public class InfinsipanActuatorConfig extends PropertiesConfiguration {
       FENIX_DOMAIN("fenix.jmxDomain"),
       FENIX_APP("fenix.appName"),
       ISPN_CACHE("infinispan.cacheName"),
-      ISPN_CACHEMANAGER("infinispan.cacheManager");
+      ISPN_CACHEMANAGER("infinispan.cacheManager"),
+      FENIX_ACTIVE("fenix.active");
 
       private final String key;
 

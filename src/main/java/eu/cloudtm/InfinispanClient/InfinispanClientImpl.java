@@ -151,7 +151,7 @@ public class InfinispanClientImpl implements InfinispanClient {
 
       this.infinispanObjectNameFinder = new InfinispanObjectNameFinder(infinispanDomain, cacheName, cacheManagerName);
       InfinsipanActuatorConfig config = ConfigurationFactory.getInstance();
-      if (config.getFenixDomain() == null)
+      if (!config.isFenixActive())
          this.fenixObjectNameFinder = null;
       else {
          this.fenixObjectNameFinder = new FenixObjectNameFinder(config.getFenixDomain(), config.getFenixAppName());
@@ -172,7 +172,10 @@ public class InfinispanClientImpl implements InfinispanClient {
       this.cacheManagerName = config.getInfinispanCacheManagerName();
 
       this.infinispanObjectNameFinder = new InfinispanObjectNameFinder(infinispanDomain, cacheName, cacheManagerName);
-      this.fenixObjectNameFinder = new FenixObjectNameFinder(config.getFenixDomain(), config.getFenixAppName());
+      if(config.isFenixActive())
+         this.fenixObjectNameFinder = new FenixObjectNameFinder(config.getFenixDomain(), config.getFenixAppName());
+      else
+         this.fenixObjectNameFinder = null;
    }
 
    /**
