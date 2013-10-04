@@ -499,6 +499,7 @@ public class InfinispanClientImpl implements InfinispanClient {
       } catch (Exception e) {
          log.error("Error setting protocol in " + machine.getHostname() + "(" + machine.getPort() + ")", e);
       }
+      log.debug("Fénix replication protocol successfully set to " + protocol + " on " + machine);
    }
 
 
