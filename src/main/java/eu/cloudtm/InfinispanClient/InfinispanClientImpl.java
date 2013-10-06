@@ -489,12 +489,14 @@ public class InfinispanClientImpl implements InfinispanClient {
       Set<ObjectName> fenixObjectNameSet = fenixObjectNameFinder.findFenixComponent(connection, "Worker");
       log.debug("Fenix found: " + fenixObjectNameSet);
       if (fenixObjectNameSet.isEmpty()) {
+         log.trace("FenixObjectNameSet is empty. Returning");
          return;
       }
       final ObjectName workerObjectName = fenixObjectNameSet.iterator().next();
       final Object[] params = new Object[]{protocol};
       final String[] signature = new String[]{String.class.getName()};
       try {
+         log.trace("Invoking setProtocol on "+workerObjectName);
          connection.invoke(workerObjectName, "setProtocol", params, signature);
       } catch (Exception e) {
          log.error("Error setting protocol in " + machine.getHostname() + "(" + machine.getPort() + ")", e);
