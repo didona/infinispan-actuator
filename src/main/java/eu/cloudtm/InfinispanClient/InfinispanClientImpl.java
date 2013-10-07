@@ -496,7 +496,7 @@ public class InfinispanClientImpl implements InfinispanClient {
       final Object[] params = new Object[]{protocol};
       final String[] signature = new String[]{String.class.getName()};
       try {
-         log.trace("Invoking setProtocol on "+workerObjectName);
+         log.trace("Invoking setProtocol on " + workerObjectName);
          connection.invoke(workerObjectName, "setProtocol", params, signature);
       } catch (Exception e) {
          log.error("Error setting protocol in " + machine.getHostname() + "(" + machine.getPort() + ")", e);
@@ -835,7 +835,7 @@ public class InfinispanClientImpl implements InfinispanClient {
       );
 
       if (currProtocolId.equals(protocolIdToApply)) {
-         log.info("Already using replication protocol " + currProtocolId);
+         log.info("Already using replication protocol " + currProtocolId + " thus skipping the reconfgiuration");
          return null;
       }
 
@@ -901,6 +901,7 @@ public class InfinispanClientImpl implements InfinispanClient {
       InfinispanMachine coordinator = retrieveCoordinator();
       log.trace("Invoking protocol switching on coordinator " + coordinator);
       Long currentEpoch = changeProtocolOn(coordinator, protocolIdToApply, forceStop, abortOnStop);
+      log.trace("Change protocol invoked on coordinator: new epoch will be " + currentEpoch);
       //2. Change protocol also on lard, if necessary
       changeProtocolOnFenixIfNeeded(coordinator, protocolIdToApply);
       // 3. Spin while all the nodes are on the same epoch
