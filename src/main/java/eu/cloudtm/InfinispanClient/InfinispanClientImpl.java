@@ -774,11 +774,11 @@ public class InfinispanClientImpl implements InfinispanClient {
       }
 
       // 2. execute switchTo, it returns currentRoundId + 1
-      Long currentRoundId = (Long) invokeInMachine(coordinator, "DataPlacementManager", "setReplicationDegree",
-                                                   new Object[]{degreeToApply}, new String[]{"int"});
+      invokeInMachine(coordinator, "DataPlacementManager", "setReplicationDegree",
+               new Object[]{degreeToApply}, new String[]{"int"});
 
       // 3. Spin while all the nodes are on the same roundId && !roundInProgress
-      Set<InfinispanMachine> changingSet = new HashSet(machines);
+      Set<InfinispanMachine> changingSet = new HashSet<InfinispanMachine>(machines);
 
       boolean awake = false;
       int maxRetries = MAX_RETRIES;
@@ -786,28 +786,28 @@ public class InfinispanClientImpl implements InfinispanClient {
       while (!changingSet.isEmpty() && !awake && maxRetries > 0) {
 
          // 3.a asking roundId to all nodes
-         Map<InfinispanMachine, Object> machine2epoch = getAttributeInAllMachine("DataPlacementManager",
-                                                                                 "currentRoundId");
+          Map<InfinispanMachine, Object> replicationDegrees = getAttributeInAllMachine("ExtendedStatistics",
+                  "replicationDegree");
+          Map<InfinispanMachine, Object> stateTransferInProgress = getAttributeInAllMachine("StateTransferManager",
+                  "stateTransferInProgress");
 
-         for (Map.Entry<InfinispanMachine, Object> entry : machine2epoch.entrySet()) {
-            InfinispanMachine currentMachine = entry.getKey();
+          for (Map.Entry<InfinispanMachine, Object> entry : replicationDegrees.entrySet()) {
+              InfinispanMachine currentMachine = entry.getKey();
+              Object replicationDegreeObject = entry.getValue();
+              Object stateInProgressObject = stateTransferInProgress.get(currentMachine);
 
-            if (entry.getValue() == ERROR_INVOKING) {
-               log.warn("An error occurred during connection with " + currentMachine + "! Removing the machine...");
-               changingSet.remove(currentMachine);
-            } else {
-               Long roundForCurrentMachine = (Long) entry.getValue();
-               if (roundForCurrentMachine == currentRoundId) {
-                  // 3.b currentMachine is aligned on the round...asking isRoundInProgress
-                  Boolean isRoundInProgress = (Boolean) getAttributeInMachine(currentMachine,
-                                                                              "DataPlacementManager",
-                                                                              "roundInProgress");
-                  if (!isRoundInProgress) {
-                     changingSet.remove(currentMachine);
+              if (isNullOrError(replicationDegreeObject) || isNullOrError(stateInProgressObject)) {
+                  log.warn("An error occurred during connection with " + currentMachine + "! Removing the machine...");
+                  changingSet.remove(currentMachine);
+              } else {
+                  long replicationDegree = (Long) replicationDegreeObject;
+                  boolean stateInProgress = (Boolean) stateInProgressObject;
+                  if (replicationDegree == degreeToApply && !stateInProgress) {
+                      // 3.b currentMachine is aligned on the round...asking isRoundInProgress
+                      changingSet.remove(currentMachine);
                   }
-               }
-            }
-         }
+              }
+          }
 
          try {
             Thread.sleep(TIME_TO_SLEEP_MS);
@@ -823,6 +823,10 @@ public class InfinispanClientImpl implements InfinispanClient {
       }
 
    }
+
+    private boolean isNullOrError(Object value) {
+        return value == null || value == ERROR_INVOKING;
+    }
 
    private Long changeProtocolOn(InfinispanMachine coordinator, String protocolIdToApply, boolean forceStop, boolean abortOnStop) throws InvocationException, NoJmxProtocolRegisterException {
 
